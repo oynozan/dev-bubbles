@@ -3,7 +3,8 @@
  * packTree sizes the snapshot tree with d3.pack and turns it into parent-local positions.
  * syncBubbles keeps one mutable BubbleState per node across snapshots, which the force
  * simulations move and the DOM reads. forceContain keeps a sibling group inside its parent,
- * and findOpenIds decides which groups semantic zoom opens.
+ * findOpenIds decides which groups semantic zoom opens, and findVisibleId walks a node's
+ * lineage to the bubble it is drawn as.
  */
 import { hierarchy, pack } from 'd3'
 import type { Force, HierarchyCircularNode, SimulationNodeDatum } from 'd3'
