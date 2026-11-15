@@ -41,7 +41,8 @@ const contentTypes: Record<string, string> = {
 
 const webDir = path.join(findPackageRoot(import.meta.dirname), 'dist', 'web')
 const maxLayoutBodySize = 64 * 1024
-const commitPattern = /^[0-9a-f]{4,40}$/i
+// Up to 64 digits for a repo that uses SHA-256 object names
+const commitPattern = /^[0-9a-f]{4,64}$/i
 
 // Other hostnames are refused so a DNS rebinding page cannot read the repo
 const localHostnames = new Set(['127.0.0.1', 'localhost'])
@@ -206,7 +207,7 @@ function parseJson(text: string): unknown {
 async function sendCommitSnapshot(context: RequestContext, url: string, response: ServerResponse): Promise<void> {
     const commit = new URL(url, 'http://127.0.0.1').searchParams.get('commit') ?? ''
     if (!commitPattern.test(commit)) {
-        sendText(response, 400, 'Expected ?commit=<sha> with 4 to 40 hex digits')
+        sendText(response, 400, 'Expected ?commit=<sha> with 4 to 64 hex digits')
         return
     }
     const snapshot = await context.snapshots.snapshotAt(commit)

@@ -267,7 +267,7 @@ describe('startServer history', () => {
         expect(filePaths(past.root).filter((filePath) => filePath.startsWith('.dev-bubbles/'))).toEqual([])
     })
 
-    it.each(['', '?commit=', '?commit=abc', `?commit=${'a'.repeat(41)}`, '?commit=HEAD', '?commit=--all', '?commit=abcd%20'])(
+    it.each(['', '?commit=', '?commit=abc', `?commit=${'a'.repeat(65)}`, '?commit=HEAD', '?commit=--all', '?commit=abcd%20'])(
         'answers 400 for the malformed query "%s"',
         async (query) => {
             expect((await getSnapshot(query)).status).toBe(400)
@@ -292,6 +292,32 @@ describe('startServer history', () => {
             expect(next.commits).toHaveLength(3)
         } finally {
             events.close()
+        }
+    })
+})
+
+describe('startServer in a SHA-256 repository', () => {
+    it('lists the commits and serves one by its full sha', async () => {
+        const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-bubbles-sha256-'))
+        git(repo, 'init', '--object-format=sha256')
+        fs.writeFileSync(path.join(repo, 'a.ts'), 'export {}\n')
+        git(repo, 'add', '-A')
+        git(repo, 'commit', '-m', 'Initial commit')
+        const server = await startServer({ repo, port: 0, trackedOnly: false })
+        try {
+            const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+            const events = await openEvents(baseUrl)
+            const live = await events.next(5000).finally(() => events.close())
+            const [commit] = live.commits
+            expect(commit.sha).toMatch(/^[0-9a-f]{64}$/)
+            const response = await fetch(`${baseUrl}/api/snapshot?commit=${commit.sha}`)
+            expect(response.status).toBe(200)
+            expect((await response.json() as Snapshot).commit).toBe(commit.sha)
+        } finally {
+            const closed = new Promise((resolve) => server.close(resolve))
+            server.closeAllConnections()
+            await closed
+            fs.rmSync(repo, { recursive: true, force: true, maxRetries: 10 })
         }
     })
 })
