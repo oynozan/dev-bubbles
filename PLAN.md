@@ -77,8 +77,11 @@ web/
     CircleText.tsx          from the original
   panels/
     BugPanel.tsx  Breadcrumb.tsx  ErrorBanner.tsx  Legend.tsx
+    DetailsWindow.tsx       draggable window with a bubble's files, connections and marks
+    CommitList.tsx          commit list at the bottom left and the past-commit banner
   lib/
     utils.ts                from the original (truncateString, keepBetween, keepCircleInsideCircle, …)
+    time.ts                 relative ages for bugs and commits
 templates/
   claude-snippet.md         paste into the target repo's CLAUDE.md
   commands/map.md           /map slash command
@@ -224,7 +227,9 @@ type Snapshot = {
     - Place new nodes near their parent's center.
     - Reheat only the groups that changed, with low alpha.
     - Never reshuffle the whole map.
-- Zoom/pan with `d3-zoom` on the svg root. Clicking a bubble zooms to fit it, with an animated transition. The breadcrumb goes back up.
+  - Switching to another commit is the exception: the map packs afresh and the view fits it whole, since old spots can wedge resized bubbles into each other.
+- Zoom/pan with `d3-zoom` on the svg root. Clicking a group zooms to fit it, with an animated transition. The breadcrumb goes back up.
+- The repo draws no circle, so top-level bubbles float free and the view fits the smallest circle around them.
 - Semantic zoom: a component shows its children only when its on-screen radius is above ~60 px. Otherwise it's drawn closed with its label.
 - Drag with `d3-drag` per node:
   - Dragging pins the node (`fx`/`fy`) and saves the pin with `POST /api/layout` → `layout.json`.
@@ -235,7 +240,7 @@ type Snapshot = {
   - Files are not bubbles. Fallback directories draw no label, their path shows in the hover tooltip.
 - Details window: clicking a bubble opens a draggable window that lists its files with their imports, importers and HTTP calls, and the bug marks on them.
   - When the snapshot has no components yet, show a hint to run `/map` in the coding agent.
-  - Replace the old rule that hides labels longer than `r * 0.5` (`Tree.tsx` line ~267). Truncate with an ellipsis instead, and show the full label in a hover tooltip.
+  - Replace the old rule that hides labels longer than `r * 0.5` (`Tree.tsx` line ~267). Wrap onto two lines, then truncate with an ellipsis, and show the full label in a hover tooltip. Labels stay between 11 px and 32 px on screen.
 - Colors:
   - Dark theme only, page and map background `#1a1a1a`.
   - No file-type colors. Groups get a neutral dark fill shaded by depth, leaves a flat neutral a bit lighter than their group.

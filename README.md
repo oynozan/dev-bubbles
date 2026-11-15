@@ -6,7 +6,7 @@ Dev Bubbles draws a git repository as a live map of nested bubbles in your brows
 
 - A dark map of nested bubbles, one per component, sized by lines of code. The top level shows your top-level components, with no bubble around the whole repo.
 - Names chosen by your coding agent. Every bubble shows the label the agent gave its component, never a file or folder name. Files are not bubbles: the innermost components hold them. Until the agent maps the repo, the bubbles follow the directory tree without names.
-- A details window. Click a bubble to list its files with what each one imports, what imports it and the HTTP calls it makes, plus the bug marks on them. Drag the window anywhere on the screen.
+- A details window. Click a bubble to list its files with what each one imports, what imports it and the HTTP calls it makes, plus the bug marks on them. Clicking a group also zooms into it. Drag the window anywhere on the screen.
 - Solid lines for imports and dashed lines for HTTP calls, drawn between the bubbles you can see at the current zoom.
 - Bug marks: striped red for suspected, solid red for confirmed. A mark on a file shows on the bubble that holds it. A mark hidden inside a closed bubble gives that bubble a red ring and a count badge.
 - A bug panel that lists the open bugs and shows why each bubble was marked.
@@ -102,7 +102,7 @@ Then change `suspected` to `confirmed`, mark a `file` path instead, or set `stat
 
 ### Why it is real-time
 
-Nothing polls. The server watches the repository with a file watcher. When `bugs.json` or any other file changes, it waits about 300 ms for further changes, rebuilds the snapshot and pushes it to every open map over Server-Sent Events. From saving `bugs.json` to the map changing takes about a third of a second.
+Nothing polls. The server watches the repository with a file watcher. When `bugs.json` or any other file changes, it waits about 300 ms for further changes, rebuilds the snapshot and pushes it to every open map over Server-Sent Events. From saving `bugs.json` to the map changing takes under half a second.
 
 ## CLI
 
