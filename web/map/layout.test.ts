@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import { dirId, fileId, ROOT_ID } from '../../shared/schema.ts'
 import type { Pin, TreeNode } from '../../shared/schema.ts'
-import { findOpenIds, fitLabel, forceContain, indexNodes, openRadius, packTree, syncBubbles } from './layout.ts'
+import type { Point } from '../lib/utils.ts'
+import {
+    absolutePosition,
+    findOpenIds,
+    fitLabel,
+    forceContain,
+    indexNodes,
+    openRadius,
+    packTree,
+    syncBubbles,
+} from './layout.ts'
 import type { BubbleState, LayoutNode, View } from './layout.ts'
 
 const nameOf = (path: string): string => path.split('/').at(-1) ?? path
@@ -190,6 +200,20 @@ describe('syncBubbles', () => {
         syncBubbles(bubbles, packTree(sampleTree()), { [fileId('web/file0.ts')]: [-3, 4] })
 
         expect(bubbles.get(fileId('web/file0.ts'))).toMatchObject({ x: -3, y: 4, fx: -3, fy: 4 })
+    })
+})
+
+describe('absolutePosition', () => {
+    it('adds the parent-local offsets up to the root and caches each ancestor', () => {
+        const bubbles = new Map<string, BubbleState>([
+            [ROOT_ID, { ...bubbleAt(0, 0, 100), id: ROOT_ID, parentId: '' }],
+            [dirId('a'), { ...bubbleAt(10, 5, 30), id: dirId('a'), parentId: ROOT_ID }],
+            [fileId('a/b.ts'), { ...bubbleAt(-3, 4, 5), id: fileId('a/b.ts'), parentId: dirId('a') }],
+        ])
+        const cache = new Map<string, Point>()
+
+        expect(absolutePosition(bubbles, fileId('a/b.ts'), cache)).toEqual([7, 9])
+        expect(cache.get(dirId('a'))).toEqual([10, 5])
     })
 })
 

@@ -22,7 +22,10 @@
             .zooming .label { display: none; }
 
             .edge { fill: none; stroke: #d4d4d4; opacity: 0.5; vector-effect: non-scaling-stroke; pointer-events: none; }
-            .edge.http { stroke-dasharray: 5 4; }
+            .edge.http { stroke-dasharray: 5 4; pointer-events: stroke; }
+            .edge-arrow { fill: #d4d4d4; }
+            .edge-focus .edge { opacity: 0.08; }
+            .edge-focus .edge.related { opacity: 0.95; }
 
             .legend, .map-hint, .status-line { background: rgba(26, 26, 26, 0.88); border: 1px solid #333333; border-radius: 6px; }
 

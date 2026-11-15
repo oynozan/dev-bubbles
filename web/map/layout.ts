@@ -49,6 +49,8 @@ export type View = Size & {
     k: number
 }
 
+export type Lineages = ReadonlyMap<string, readonly string[]>
+
 export type FittedLabel = {
     text: string
     fontSize: number
@@ -131,6 +133,18 @@ export const indexNodes = (root: LayoutNode): Map<string, LayoutNode> => {
     return nodesById
 }
 
+// The ids from the root down to each node, which tell what a node is drawn as at any zoom
+export const indexLineages = (root: LayoutNode): Map<string, string[]> => {
+    const lineages = new Map<string, string[]>()
+    const visit = (node: LayoutNode, parentLineage: string[]): void => {
+        const lineage = [...parentLineage, node.id]
+        lineages.set(node.id, lineage)
+        node.children?.forEach((child) => visit(child, lineage))
+    }
+    visit(root, [])
+    return lineages
+}
+
 export const findTrail = (node: LayoutNode, id: string): LayoutNode[] => {
     if (node.id === id) return [node]
     for (const child of node.children ?? []) {
@@ -207,14 +221,20 @@ const applyPin = (bubble: BubbleState, pin: Pin | undefined): boolean => {
     return true
 }
 
-export const absolutePosition = (bubbles: ReadonlyMap<string, BubbleState>, id: string): Point => {
-    let x = 0
-    let y = 0
-    for (let bubble = bubbles.get(id); bubble; bubble = bubbles.get(bubble.parentId)) {
-        x += bubble.x
-        y += bubble.y
-    }
-    return [x, y]
+// Lookups that share a cache within one frame walk every ancestor chain once
+export const absolutePosition = (
+    bubbles: ReadonlyMap<string, BubbleState>,
+    id: string,
+    cache = new Map<string, Point>(),
+): Point => {
+    const cached = cache.get(id)
+    if (cached) return cached
+    const bubble = bubbles.get(id)
+    if (!bubble) return [0, 0]
+    const [parentX, parentY] = absolutePosition(bubbles, bubble.parentId, cache)
+    const position: Point = [parentX + bubble.x, parentY + bubble.y]
+    cache.set(id, position)
+    return position
 }
 
 /* Forces */
@@ -284,6 +304,11 @@ const isOpenInView = (r: number, x: number, y: number, view: View): boolean => {
     const nearestX = keepBetween(0, view.width, screenX)
     const nearestY = keepBetween(0, view.height, screenY)
     return screenR > openRadius && Math.hypot(screenX - nearestX, screenY - nearestY) < screenR
+}
+
+// A node inside a closed group is drawn as the outermost closed group around it
+export const findVisibleId = (lineage: readonly string[], openIds: ReadonlySet<string>): string => {
+    return lineage.find((id) => !openIds.has(id)) ?? lineage[lineage.length - 1]
 }
 
 export const fitTransform = (centre: Point, r: number, { width, height }: Size): Omit<View, keyof Size> => {

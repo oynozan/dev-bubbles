@@ -41,7 +41,7 @@ const BubbleNode = ({ node, openIds, actions }: BubbleProps): ReactElement => {
     }
 
     return (
-        <g ref={register} className="bubble" onClick={zoomOnClick} onDoubleClick={unpinOnDoubleClick}>
+        <g ref={register} className="bubble" data-id={id} onClick={zoomOnClick} onDoubleClick={unpinOnDoubleClick}>
             <title>{tooltipOf(node)}</title>
             <circle r={r} fill={bubbleFill(node)} className={kind === 'file' ? undefined : 'group'} />
             {isOpen && node.children?.map((child) => (

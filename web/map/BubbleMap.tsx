@@ -1,8 +1,9 @@
 /*
  * Interactive bubble map.
- * React renders the nested <g> tree for open groups only. MapController owns everything
- * that changes faster than React should, the node positions, one force simulation per
- * open sibling group, d3-zoom on the svg and d3-drag per bubble, and writes transforms
+ * React renders the nested <g> tree for open groups only, with the edges between the drawn
+ * bubbles in a layer above it. MapController owns everything that changes faster than React
+ * should, the node positions, one force simulation per open sibling group, d3-zoom on the
+ * svg, d3-drag per bubble and the edge hover highlight, and writes transforms and edge paths
  * straight to the DOM.
  */
 import { drag, forceCollide, forceSimulation, forceX, forceY, select, zoom, zoomIdentity } from 'd3'
@@ -14,18 +15,23 @@ import type { Point } from '../lib/utils.ts'
 import { Breadcrumb } from '../panels/Breadcrumb.tsx'
 import { Bubble } from './Bubble.tsx'
 import type { BubbleActions } from './Bubble.tsx'
+import { EdgeLayer } from './EdgeLayer.tsx'
+import type { EdgeActions } from './EdgeLayer.tsx'
+import { aggregateEdges, edgePath, isEdgeOf } from './edges.ts'
+import type { Circle, VisibleEdge } from './edges.ts'
 import {
     absolutePosition,
     findOpenIds,
     findTrail,
     fitTransform,
     forceContain,
+    indexLineages,
     indexNodes,
     packTree,
     siblingGap,
     syncBubbles,
 } from './layout.ts'
-import type { BubbleState, LayoutNode, Size } from './layout.ts'
+import type { BubbleState, LayoutNode, Lineages, Size } from './layout.ts'
 
 type BubbleMapProps = {
     snapshot: Snapshot
@@ -49,6 +55,8 @@ export const BubbleMap = ({ snapshot }: BubbleMapProps) => {
     const [focusId, setFocusId] = useState(ROOT_ID)
     const [controller] = useState(() => new MapController(setOpenIds, setFocusId))
     const tree = useMemo(() => packTree(snapshot.root), [snapshot.root])
+    const lineages = useMemo(() => indexLineages(tree), [tree])
+    const edges = useMemo(() => aggregateEdges(snapshot.edges, lineages, openIds), [snapshot.edges, lineages, openIds])
     const trail = findTrail(tree, focusId)
 
     useLayoutEffect(() => {
@@ -57,7 +65,10 @@ export const BubbleMap = ({ snapshot }: BubbleMapProps) => {
         return svg && layer ? controller.attach(svg, layer) : undefined
     }, [controller])
 
-    useLayoutEffect(() => controller.setSnapshot(tree, snapshot.pins), [controller, tree, snapshot.pins])
+    useLayoutEffect(
+        () => controller.setSnapshot(tree, lineages, snapshot.pins),
+        [controller, tree, lineages, snapshot.pins],
+    )
 
     return (
         <div className="bubble-map">
@@ -66,6 +77,7 @@ export const BubbleMap = ({ snapshot }: BubbleMapProps) => {
                     <g className="bubbles">
                         <Bubble node={tree} openIds={openIds} actions={controller} />
                     </g>
+                    <EdgeLayer edges={edges} actions={controller} />
                 </g>
             </svg>
             <Breadcrumb trail={trail.length ? trail : [tree]} onSelect={controller.zoomTo} />
@@ -73,9 +85,10 @@ export const BubbleMap = ({ snapshot }: BubbleMapProps) => {
     )
 }
 
-class MapController implements BubbleActions {
+class MapController implements BubbleActions, EdgeActions {
     private readonly bubbles = new Map<string, BubbleState>()
     private readonly elements = new Map<string, SVGGElement>()
+    private readonly edgeElements = new Map<SVGPathElement, VisibleEdge>()
     private readonly simulations = new Map<string, GroupSimulation>()
     private readonly dirtyGroups = new Set<string>()
     private readonly zoomBehavior = zoom<SVGSVGElement, unknown>()
@@ -83,11 +96,14 @@ class MapController implements BubbleActions {
     private readonly showFocus: (id: string) => void
     private tree: LayoutNode | undefined
     private nodesById = new Map<string, LayoutNode>()
+    private lineages: Lineages = new Map()
     private openIds: ReadonlySet<string> = new Set([ROOT_ID])
     private view: ZoomTransform = zoomIdentity
     private size: Size = { width: 0, height: 0 }
     private svg: SVGSVGElement | undefined
     private lastRootFit: ZoomTransform | undefined
+    private hoveredId: string | undefined
+    private isEdgeDrawQueued = false
 
     constructor(showOpenIds: (openIds: ReadonlySet<string>) => void, showFocus: (id: string) => void) {
         this.showOpenIds = showOpenIds
@@ -113,9 +129,13 @@ class MapController implements BubbleActions {
             if (this.refreshOpenIds()) this.syncSimulations()
         })
         resizeObserver.observe(svg)
+        svg.addEventListener('pointerover', this.highlightHovered)
+        svg.addEventListener('pointerleave', this.clearHighlight)
 
         return () => {
             resizeObserver.disconnect()
+            svg.removeEventListener('pointerover', this.highlightHovered)
+            svg.removeEventListener('pointerleave', this.clearHighlight)
             select(svg).interrupt().on('.zoom', null)
             for (const simulation of this.simulations.values()) simulation.stop()
             this.simulations.clear()
@@ -123,11 +143,14 @@ class MapController implements BubbleActions {
         }
     }
 
-    setSnapshot(tree: LayoutNode, pins: Readonly<Record<string, Pin>>): void {
+    setSnapshot(tree: LayoutNode, lineages: Lineages, pins: Readonly<Record<string, Pin>>): void {
         for (const id of syncBubbles(this.bubbles, tree, pins)) this.dirtyGroups.add(id)
         this.tree = tree
         this.nodesById = indexNodes(tree)
+        this.lineages = lineages
         for (const [id, element] of this.elements) this.place(element, this.bubbles.get(id))
+        for (const [element, edge] of this.edgeElements) this.markRelated(element, edge)
+        this.queueEdgeDraw()
         this.updateRootZoom()
         this.refreshOpenIds()
         this.syncSimulations()
@@ -140,6 +163,15 @@ class MapController implements BubbleActions {
         return () => {
             if (this.elements.get(id) === element) this.elements.delete(id)
             select(element).on('.drag', null)
+        }
+    }
+
+    registerEdge = (edge: VisibleEdge, element: SVGPathElement): (() => void) => {
+        this.edgeElements.set(element, edge)
+        this.markRelated(element, edge)
+        this.queueEdgeDraw()
+        return () => {
+            this.edgeElements.delete(element)
         }
     }
 
@@ -214,7 +246,10 @@ class MapController implements BubbleActions {
             .force('collide', forceCollide<BubbleState>((bubble) => bubble.r + padding))
             .force('contain', forceContain(() => this.bubbles.get(group.id)?.r ?? group.r))
             .stop()
-        simulation.on('tick', () => this.placeAll(simulation.nodes()))
+        simulation.on('tick', () => {
+            this.placeAll(simulation.nodes())
+            this.queueEdgeDraw()
+        })
         return simulation
     }
 
@@ -231,6 +266,50 @@ class MapController implements BubbleActions {
 
     private place(element: SVGGElement, bubble: BubbleState | undefined): void {
         if (bubble) element.setAttribute('transform', `translate(${bubble.x},${bubble.y})`)
+    }
+
+    /* Edges */
+
+    // Every open group ticks in the same frame, so the edges redraw once after the last of them
+    private queueEdgeDraw(): void {
+        if (this.isEdgeDrawQueued) return
+        this.isEdgeDrawQueued = true
+        queueMicrotask(() => {
+            this.isEdgeDrawQueued = false
+            this.drawEdges()
+        })
+    }
+
+    private drawEdges(): void {
+        const positions = new Map<string, Point>()
+        const circleOf = (id: string): Circle => {
+            const [x, y] = absolutePosition(this.bubbles, id, positions)
+            return { x, y, r: this.bubbles.get(id)?.r ?? 0 }
+        }
+        for (const [element, edge] of this.edgeElements) {
+            element.setAttribute('d', edgePath(circleOf(edge.from), circleOf(edge.to)))
+        }
+    }
+
+    private readonly highlightHovered = (event: PointerEvent): void => {
+        // An edge under the pointer keeps the highlight of the bubble it was reached from
+        if (!(event.target instanceof Element) || event.target.closest('.edge')) return
+        const id = event.target.closest<SVGGElement>('.bubble')?.dataset.id
+        this.highlightEdgesOf(id === ROOT_ID ? undefined : id)
+    }
+
+    private readonly clearHighlight = (): void => this.highlightEdgesOf(undefined)
+
+    private highlightEdgesOf(id: string | undefined): void {
+        if (id === this.hoveredId) return
+        this.hoveredId = id
+        this.svg?.classList.toggle('edge-focus', id !== undefined)
+        for (const [element, edge] of this.edgeElements) this.markRelated(element, edge)
+    }
+
+    private markRelated(element: SVGPathElement, edge: VisibleEdge): void {
+        const id = this.hoveredId
+        element.classList.toggle('related', id !== undefined && isEdgeOf(edge, id, this.lineages))
     }
 
     /* Dragging */
