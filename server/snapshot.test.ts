@@ -10,6 +10,24 @@ import { flattenTree } from './components.ts'
 import { createSnapshotSource } from './snapshot.ts'
 import type { SnapshotSource } from './snapshot.ts'
 
+const checkouts = vi.hoisted(() => ({ running: 0, most: 0 }))
+
+vi.mock('./history.ts', async (importOriginal) => {
+    const history = await importOriginal<typeof import('./history.ts')>()
+    return {
+        ...history,
+        async withCommitTree<T>(repoRoot: string, sha: string, use: (treeDir: string, paths: string[]) => Promise<T>) {
+            checkouts.running++
+            checkouts.most = Math.max(checkouts.most, checkouts.running)
+            try {
+                return await history.withCommitTree(repoRoot, sha, use)
+            } finally {
+                checkouts.running--
+            }
+        },
+    }
+})
+
 const manifest: Manifest = {
     version: 1,
     components: [{ id: 'auth', label: 'Auth', include: ['src/auth/**'] }],
@@ -218,6 +236,16 @@ describe('createSnapshotSource', () => {
         expect(live.edges).toContainEqual({ from: 'file:src/api/server.ts', to: 'file:src/lib/logger.ts', kind: 'import' })
         expect(past?.edges).toEqual(live.edges)
         expect(fs.existsSync(path.join(fixtureDir, 'node_modules', '@acme', 'tsconfig', 'base.json'))).toBe(true)
+    })
+
+    it('checks out one past commit at a time', async () => {
+        git(fixtureDir, 'commit', '--allow-empty', '-m', 'Second commit')
+        git(fixtureDir, 'commit', '--allow-empty', '-m', 'Third commit')
+        const shas = ['HEAD', 'HEAD~1', 'HEAD~2'].map((revision) => git(fixtureDir, 'rev-parse', revision))
+        checkouts.most = 0
+        const snapshots = await Promise.all(shas.map((sha) => source.snapshotAt(sha)))
+        expect(snapshots.map((snapshot) => snapshot?.commit)).toEqual(shas)
+        expect(checkouts.most).toBe(1)
     })
 
     it('forgets a past commit that failed to check out so the next request tries again', async () => {

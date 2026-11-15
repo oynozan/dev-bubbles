@@ -42,6 +42,7 @@ export function createSnapshotSource(repoRoot: string, options: { trackedOnly: b
     let running: Promise<Snapshot> | undefined
     let queued: Promise<Snapshot> | undefined
     const commitViews = new Map<string, Promise<MapView>>()
+    let lastCheckout: Promise<unknown> = Promise.resolve()
 
     async function build(): Promise<Snapshot> {
         const errors: string[] = []
@@ -91,10 +92,12 @@ export function createSnapshotSource(repoRoot: string, options: { trackedOnly: b
         const key = JSON.stringify([sha, manifest ?? null])
         const cached = commitViews.get(key)
         if (cached) return cached
-        const view = withCommitTree(repoRoot, sha, async (treeDir, paths) => {
+        // One checkout at a time, so a quick run through the commit list cannot pile up full checkouts and parses
+        const view = lastCheckout.then(() => withCommitTree(repoRoot, sha, async (treeDir, paths) => {
             const files = await createInventory(treeDir, async () => paths).scan(manifest?.ignore ?? [])
             return mapFiles(repoName, files, createEdgeIndex(treeDir, repoRoot), manifest)
-        })
+        }))
+        lastCheckout = view.catch(() => undefined)
         commitViews.set(key, view)
         view.catch(() => commitViews.delete(key))
         if (commitViews.size > commitViewLimit) {
