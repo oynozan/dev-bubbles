@@ -48,6 +48,9 @@ type ConnectionRow = {
     isInside: boolean
 }
 
+// Where the user last dragged a window, so the next one opens there and not back over the corner
+let draggedPosition: Point | undefined
+
 const connectionKinds: [ConnectionKind, string][] = [
     ['imports', 'Imports'],
     ['importedBy', 'Imported by'],
@@ -74,6 +77,7 @@ const DetailsWindowNode = ({ node, index, onSelect, onClose }: DetailsWindowProp
     useEffect(() => {
         const element = windowRef.current
         if (!element) return
+        if (draggedPosition) moveWindow(element, ...draggedPosition)
         const keepInView = () => {
             const { left, top } = element.getBoundingClientRect()
             moveWindow(element, left, top)
@@ -101,6 +105,11 @@ const DetailsWindowNode = ({ node, index, onSelect, onClose }: DetailsWindowProp
         if (element && offset) moveWindow(element, event.clientX - offset[0], event.clientY - offset[1])
     }
     const endDrag = () => {
+        const element = windowRef.current
+        if (element && dragOffset.current) {
+            const { left, top } = element.getBoundingClientRect()
+            draggedPosition = [left, top]
+        }
         dragOffset.current = undefined
     }
 
