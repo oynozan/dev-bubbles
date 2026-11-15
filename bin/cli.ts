@@ -148,7 +148,7 @@ async function loadRepo(repoRoot: string, trackedOnly: boolean): Promise<RepoSta
 
 async function summarize(repoRoot: string, trackedOnly: boolean): Promise<string> {
     const { manifestResult, manifest, files, root } = await loadRepo(repoRoot, trackedOnly)
-    const { edges, unmatchedCalls } = createEdgeIndex(repoRoot).update(files, manifest)
+    const { edges, unmatchedCalls } = await createEdgeIndex(repoRoot).update(files, manifest)
     return [
         `${path.basename(repoRoot)}: ${countOf(files.length, 'file')}, ${sumLoc(files)} LOC`,
         section('Directories:', describeDirectories(buildTree('', files, undefined))),

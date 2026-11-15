@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { setImmediate as nextTurn } from 'node:timers/promises'
 import { ResolverFactory } from 'oxc-resolver'
 import { fileId } from '../shared/schema.ts'
 import type { Edge, Manifest } from '../shared/schema.ts'
@@ -13,13 +14,16 @@ export type EdgeResult = { edges: Edge[], unmatchedCalls: UnmatchedCall[] }
 
 export type FileStamp = { path: string, mtimeMs: number, size: number }
 
-type EdgeIndex = { update(files: FileStamp[], manifest: Manifest | undefined): EdgeResult }
+type EdgeIndex = { update(files: FileStamp[], manifest: Manifest | undefined): Promise<EdgeResult> }
 
 type CachedFile = { mtimeMs: number, size: number, analysis: FileAnalysis, importTargets?: string[] }
 
 const analyzers: Analyzer[] = [jsTsAnalyzer]
 
 const resolverConfigFile = /(?:^|\/)(?:tsconfig[^/]*\.json|package\.json)$/
+
+// Parsing and resolving are synchronous, so long runs pause this often to let the server answer requests
+const maxBlockMs = 50
 
 export function createEdgeIndex(repoRoot: string): EdgeIndex {
     const rootDir = fs.realpathSync.native(repoRoot)
@@ -46,9 +50,11 @@ export function createEdgeIndex(repoRoot: string): EdgeIndex {
         for (const cached of cache.values()) cached.importTargets = undefined
     }
 
-    function findImportEdges(filePaths: Set<string>): Edge[] {
+    async function findImportEdges(filePaths: Set<string>): Promise<Edge[]> {
         const edges: Edge[] = []
+        const pause = createPause()
         for (const [fromPath, cached] of cache) {
+            await pause()
             cached.importTargets ??= cached.analysis.imports
                 .flatMap((specifier) => resolveImport(fromPath, specifier) ?? [])
             for (const target of cached.importTargets) {
@@ -70,10 +76,10 @@ export function createEdgeIndex(repoRoot: string): EdgeIndex {
     }
 
     return {
-        update(files, manifest) {
-            refreshCache(rootDir, files, cache)
+        async update(files, manifest) {
+            await refreshCache(rootDir, files, cache)
             refreshResolver(files)
-            const importEdges = findImportEdges(new Set(files.map((file) => file.path)))
+            const importEdges = await findImportEdges(new Set(files.map((file) => file.path)))
             const http = findHttpEdges(cache)
             return {
                 edges: unique([...importEdges, ...http.edges, ...manualEdges(manifest)]),
@@ -83,9 +89,11 @@ export function createEdgeIndex(repoRoot: string): EdgeIndex {
     }
 }
 
-function refreshCache(rootDir: string, files: FileStamp[], cache: Map<string, CachedFile>): void {
+async function refreshCache(rootDir: string, files: FileStamp[], cache: Map<string, CachedFile>): Promise<void> {
     const analyzedPaths = new Set<string>()
+    const pause = createPause()
     for (const file of files) {
+        await pause()
         const analyzer = analyzers.find((candidate) => candidate.match(file.path))
         if (!analyzer) continue
         const cached = cache.get(file.path)
@@ -99,6 +107,15 @@ function refreshCache(rootDir: string, files: FileStamp[], cache: Map<string, Ca
     }
     for (const cachedPath of cache.keys()) {
         if (!analyzedPaths.has(cachedPath)) cache.delete(cachedPath)
+    }
+}
+
+function createPause(): () => Promise<void> {
+    let runningSince = performance.now()
+    return async () => {
+        if (performance.now() - runningSince < maxBlockMs) return
+        await nextTurn()
+        runningSince = performance.now()
     }
 }
 

@@ -38,7 +38,7 @@ export function createSnapshotSource(repoRoot: string, options: { trackedOnly: b
         const root = buildTree(repoName, files, manifest)
         const nodeIds = new Set(flattenTree(root).map((node) => node.id))
         // A manual http edge can name a component that has no files and so no node
-        const edges = edgeIndex.update(files, manifest).edges
+        const edges = (await edgeIndex.update(files, manifest)).edges
             .filter((edge) => nodeIds.has(edge.from) && nodeIds.has(edge.to))
         const { bugs, errors: bugErrors } = resolveBugs(bugsFile, nodeIds)
         errors.push(...bugErrors)

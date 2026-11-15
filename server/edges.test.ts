@@ -44,11 +44,11 @@ afterAll(() => {
 describe('createEdgeIndex on the sample app', () => {
     let result: EdgeResult
 
-    beforeAll(() => {
+    beforeAll(async () => {
         const repo = makeRepo()
         writeFile(repo, 'node_modules/express/package.json', '{ "name": "express", "main": "index.js" }')
         writeFile(repo, 'node_modules/express/index.js', 'module.exports = {}')
-        result = createEdgeIndex(repo).update(listFiles(repo), {
+        result = await createEdgeIndex(repo).update(listFiles(repo), {
             version: 1,
             components: [],
             httpEdges: [
@@ -131,11 +131,11 @@ describe('createEdgeIndex on the sample app', () => {
 })
 
 describe('createEdgeIndex catch-all routes', () => {
-    it('link only the calls that no specific route takes', () => {
+    it('link only the calls that no specific route takes', async () => {
         const repo = makeRepo()
         writeFile(repo, 'src/api/spa.ts', "app.get('/*', serveIndex)\n")
         writeFile(repo, 'web/src/about.ts', "fetch('/about')\n")
-        const { edges } = createEdgeIndex(repo).update(listFiles(repo), undefined)
+        const { edges } = await createEdgeIndex(repo).update(listFiles(repo), undefined)
         expect(edges.filter((edge) => edge.to === 'file:src/api/spa.ts')).toEqual([
             { from: 'file:web/src/about.ts', to: 'file:src/api/spa.ts', kind: 'http', label: 'GET /*' },
         ])
@@ -143,28 +143,28 @@ describe('createEdgeIndex catch-all routes', () => {
 })
 
 describe('createEdgeIndex updates', () => {
-    it('follows edited, added and removed files and tsconfig changes', () => {
+    it('follows edited, added and removed files and tsconfig changes', async () => {
         const repo = makeRepo()
         const index = createEdgeIndex(repo)
         const update = () => index.update(listFiles(repo), undefined)
-        update()
+        await update()
 
         writeFile(repo, 'src/lib/index.ts', "export * from './url'\nexport * from './retry'\n")
-        expect(importTargets(update().edges, 'src/lib/index.ts')).toEqual(['src/lib/url.ts'])
+        expect(importTargets((await update()).edges, 'src/lib/index.ts')).toEqual(['src/lib/url.ts'])
 
         writeFile(repo, 'src/lib/retry.ts', 'export const retries = 3\n')
-        expect(importTargets(update().edges, 'src/lib/index.ts')).toEqual(['src/lib/retry.ts', 'src/lib/url.ts'])
+        expect(importTargets((await update()).edges, 'src/lib/index.ts')).toEqual(['src/lib/retry.ts', 'src/lib/url.ts'])
 
         fs.rmSync(path.join(repo, 'src/lib/retry.ts'))
-        expect(importTargets(update().edges, 'src/lib/index.ts')).toEqual(['src/lib/url.ts'])
+        expect(importTargets((await update()).edges, 'src/lib/index.ts')).toEqual(['src/lib/url.ts'])
 
         writeFile(repo, 'web/src/LoginPage.tsx', 'export function LoginPage() {\n    return null\n}\n')
-        expect(update().edges.some((edge) => edge.from === 'file:web/src/LoginPage.tsx')).toBe(false)
+        expect((await update()).edges.some((edge) => edge.from === 'file:web/src/LoginPage.tsx')).toBe(false)
 
         writeFile(repo, 'tsconfig.json', '{ "compilerOptions": { "strict": true } }\n')
-        expect(importTargets(update().edges, 'src/api/routes/billing.ts')).toEqual(['src/auth/session.ts'])
+        expect(importTargets((await update()).edges, 'src/api/routes/billing.ts')).toEqual(['src/auth/session.ts'])
 
         writeFile(repo, 'tsconfig.json', '{ "extends": "@tsconfig/missing/tsconfig.json" }\n')
-        expect(importTargets(update().edges, 'src/api/routes/billing.ts')).toEqual(['src/auth/session.ts'])
+        expect(importTargets((await update()).edges, 'src/api/routes/billing.ts')).toEqual(['src/auth/session.ts'])
     })
 })
