@@ -9,6 +9,8 @@ const execFileAsync = promisify(execFile)
 const gitMaxBuffer = 256 * 1024 * 1024
 const commitLimit = 100
 const commitFormat = '%H%x00%s%x00%an%x00%cI'
+// Smudging would download every LFS file of a past commit over the network, so they stay pointers
+const skipLfsSmudge = ['-c', 'filter.lfs.process=', '-c', 'filter.lfs.smudge=', '-c', 'filter.lfs.required=false']
 
 // Resolves no commits for a repo without any, or when git log fails
 export async function listCommits(repoRoot: string): Promise<CommitInfo[]> {
@@ -45,7 +47,8 @@ export async function withCommitTree<T>(
         const options = { cwd: repoRoot, env: { ...process.env, GIT_INDEX_FILE: path.join(tempDir, 'index') }, maxBuffer: gitMaxBuffer }
         await execFileAsync('git', ['read-tree', sha], options)
         // Without the trailing slash git prepends the prefix to each file name instead of using it as a folder
-        await execFileAsync('git', ['checkout-index', '--all', '--force', `--prefix=${treeDir.replaceAll('\\', '/')}/`], options)
+        const prefix = `--prefix=${treeDir.replaceAll('\\', '/')}/`
+        await execFileAsync('git', [...skipLfsSmudge, 'checkout-index', '--all', '--force', prefix], options)
         const { stdout } = await execFileAsync('git', ['ls-files', '-z'], options)
         return await use(treeDir, stdout.split('\0').filter(Boolean))
     } finally {

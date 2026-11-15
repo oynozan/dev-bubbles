@@ -93,4 +93,20 @@ describe('withCommitTree', () => {
         await expect(withCommitTree(repo, first, () => Promise.reject(new Error('boom')))).rejects.toThrow('boom')
         expect(fs.readdirSync(tempRoot)).toEqual([])
     })
+
+    it('keeps LFS pointers instead of running a smudge filter that downloads the files', async () => {
+        const lfsRepo = makeRepo()
+        const pointer = `version https://git-lfs.github.com/spec/v1\noid sha256:${'0'.repeat(64)}\nsize 12345\n`
+        const noLfs = ['-c', 'filter.lfs.process=', '-c', 'filter.lfs.clean=', '-c', 'filter.lfs.required=false']
+        fs.writeFileSync(path.join(lfsRepo, '.gitattributes'), '*.bin filter=lfs -text\n')
+        fs.writeFileSync(path.join(lfsRepo, 'data.bin'), pointer)
+        git(lfsRepo, ...noLfs, 'add', '-A')
+        git(lfsRepo, ...noLfs, 'commit', '-m', 'Track a binary with LFS')
+        // Fails like a download from a remote that cannot be reached
+        for (const key of ['process', 'smudge']) git(lfsRepo, 'config', `filter.lfs.${key}`, 'false')
+        git(lfsRepo, 'config', 'filter.lfs.required', 'true')
+        const sha = git(lfsRepo, 'rev-parse', 'HEAD')
+        const content = await withCommitTree(lfsRepo, sha, async (treeDir) => fs.readFileSync(path.join(treeDir, 'data.bin'), 'utf8'))
+        expect(content).toBe(pointer)
+    })
 })

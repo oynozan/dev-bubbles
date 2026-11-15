@@ -29,6 +29,7 @@ describe('inventory', () => {
         writeFile(fixtureDir, 'src/empty.ts', '')
         writeFile(fixtureDir, 'debug.log', 'ignored by git\n')
         writeFile(fixtureDir, 'assets/logo.bin', Buffer.from([1, 2, 0, 3, 10]))
+        writeFile(fixtureDir, 'assets/model.glb', `version https://git-lfs.github.com/spec/v1\noid sha256:${'0'.repeat(64)}\nsize 9\n`)
         writeFile(fixtureDir, 'assets/huge.txt', 'x\n'.repeat(600 * 1024))
         writeFile(fixtureDir, '.dev-bubbles/components.json', '{}\n')
         files = await repoInventory(fixtureDir).scan([])
@@ -45,10 +46,11 @@ describe('inventory', () => {
         expect(paths.filter((filePath) => filePath.includes('\\'))).toEqual([])
     })
 
-    it('leaves out gitignored files, binaries, large files and the config folder', () => {
+    it('leaves out gitignored files, binaries, LFS pointers, large files and the config folder', () => {
         const paths = files.map((file) => file.path)
         expect(paths).not.toContain('debug.log')
         expect(paths).not.toContain('assets/logo.bin')
+        expect(paths).not.toContain('assets/model.glb')
         expect(paths).not.toContain('assets/huge.txt')
         expect(paths.filter((filePath) => filePath.startsWith('.dev-bubbles/'))).toEqual([])
     })

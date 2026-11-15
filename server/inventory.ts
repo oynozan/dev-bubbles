@@ -15,7 +15,7 @@ export type InventoryFile = {
 type InspectedFile = {
     mtimeMs: number
     size: number
-    // Undefined for binaries and files over the size limit, which stay off the map
+    // Undefined for binaries, LFS pointers and files over the size limit, which stay off the map
     loc: number | undefined
 }
 
@@ -23,6 +23,8 @@ const execFileAsync = promisify(execFile)
 const gitMaxBuffer = 256 * 1024 * 1024
 const maxFileSize = 1024 * 1024
 const binaryProbeSize = 8 * 1024
+// A past commit is checked out with LFS pointers, which stand for files the live view drops as binary
+const lfsPointerStart = Buffer.from('version https://git-lfs.github.com/spec/v1')
 const newlineByte = 10
 const batchSize = 64
 
@@ -57,7 +59,7 @@ export function createInventory(
         if (size > maxFileSize) return { mtimeMs, size, loc: undefined }
         const content = await fs.readFile(absolutePath).catch(() => undefined)
         if (!content) return undefined
-        return { mtimeMs, size, loc: isBinary(content) ? undefined : countLines(content) }
+        return { mtimeMs, size, loc: isBinary(content) || isLfsPointer(content) ? undefined : countLines(content) }
     }
 
     return {
@@ -90,6 +92,10 @@ export async function listRepoFiles(repoRoot: string, trackedOnly: boolean): Pro
 
 function isBinary(content: Buffer): boolean {
     return content.subarray(0, binaryProbeSize).includes(0)
+}
+
+function isLfsPointer(content: Buffer): boolean {
+    return content.subarray(0, lfsPointerStart.length).equals(lfsPointerStart)
 }
 
 function countLines(content: Buffer): number {
