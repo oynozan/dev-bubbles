@@ -57,6 +57,8 @@ export async function startServer({ repo, port, trackedOnly }: ServerOptions): P
     await listen(server, port)
     const watcher = await watchRepo(repoRoot, await findGitIndexPath(repoRoot), () => void refresh())
     server.on('close', () => void watcher.close())
+    // Changes made before the watcher was ready sent no event
+    void refresh()
     return server
 }
 
