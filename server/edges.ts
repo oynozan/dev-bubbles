@@ -21,9 +21,6 @@ const analyzers: Analyzer[] = [jsTsAnalyzer]
 
 const resolverConfigFile = /(?:^|\/)(?:tsconfig[^/]*\.json|package\.json)$/
 
-// Larger files are bundles or generated code and take most of the parse time
-const maxSourceBytes = 1024 * 1024
-
 export function createEdgeIndex(repoRoot: string): EdgeIndex {
     const rootDir = fs.realpathSync.native(repoRoot)
     const resolverOptions = {
@@ -90,7 +87,7 @@ function refreshCache(rootDir: string, files: FileStamp[], cache: Map<string, Ca
     const analyzedPaths = new Set<string>()
     for (const file of files) {
         const analyzer = analyzers.find((candidate) => candidate.match(file.path))
-        if (!analyzer || file.size > maxSourceBytes) continue
+        if (!analyzer) continue
         const cached = cache.get(file.path)
         if (cached?.mtimeMs !== file.mtimeMs || cached.size !== file.size) {
             const source = readSource(path.join(rootDir, file.path))
