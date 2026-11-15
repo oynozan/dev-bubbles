@@ -21,6 +21,7 @@ type CommitView = {
 }
 
 const retryDelayMs = 2000
+const selectionRestMs = 200
 
 const statusText: Record<Exclude<StreamStatus, 'live'>, string> = {
     connecting: 'Connecting to the dev-bubbles server…',
@@ -108,21 +109,21 @@ const useSnapshotStream = (): SnapshotStream => {
 
 // The live stream keeps running underneath, so going back to live needs no reload
 const useCommitView = (): CommitView & { select: (sha: string | undefined) => void } => {
-    const [cache] = useState(() => new Map<string, Snapshot>())
     const latestSha = useRef<string | undefined>(undefined)
+    const fetchTimer = useRef<number | undefined>(undefined)
     const [view, setView] = useState<CommitView>({ isLoading: false })
 
     const select = useCallback((sha: string | undefined) => {
         latestSha.current = sha
-        const cached = sha === undefined ? undefined : cache.get(sha)
-        if (sha === undefined || cached) {
-            setView({ selectedSha: sha, snapshot: cached, isLoading: false })
+        window.clearTimeout(fetchTimer.current)
+        if (sha === undefined) {
+            setView({ isLoading: false })
             return
         }
         setView((previous) => ({ selectedSha: sha, snapshot: previous.snapshot, isLoading: true }))
-        fetchCommitSnapshot(sha).then(
+        // Each fetch checks out a whole commit, so a held arrow key only loads the commit it stops on
+        fetchTimer.current = window.setTimeout(() => fetchCommitSnapshot(sha).then(
             (snapshot) => {
-                cache.set(sha, snapshot)
                 if (latestSha.current === sha) setView({ selectedSha: sha, snapshot, isLoading: false })
             },
             (reason: unknown) => {
@@ -130,12 +131,13 @@ const useCommitView = (): CommitView & { select: (sha: string | undefined) => vo
                 const error = reason instanceof Error ? reason.message : String(reason)
                 setView((previous) => ({ ...previous, isLoading: false, error }))
             },
-        )
-    }, [cache])
+        ), selectionRestMs)
+    }, [])
 
     return { ...view, select }
 }
 
+// Never cached, since the server names a past commit with the current components.json and reads the pins afresh
 const fetchCommitSnapshot = async (sha: string): Promise<Snapshot> => {
     const response = await fetch(`/api/snapshot?commit=${encodeURIComponent(sha)}`)
     if (!response.ok) throw new Error((await response.text()).trim() || `the server answered ${response.status}`)
