@@ -44,7 +44,11 @@ function handleRequest(repo: string, request: IncomingMessage, response: ServerR
         response.writeHead(405, { Allow: 'GET, HEAD' }).end()
         return
     }
-    const { pathname } = new URL(request.url ?? '/', 'http://127.0.0.1')
+    const pathname = readPathname(request.url ?? '/')
+    if (pathname === undefined) {
+        sendText(response, 400, 'Bad request')
+        return
+    }
     if (pathname === '/api/snapshot') {
         sendJson(response, 200, buildSnapshot(repo))
         return
@@ -52,8 +56,17 @@ function handleRequest(repo: string, request: IncomingMessage, response: ServerR
     serveStatic(pathname, response)
 }
 
+function readPathname(url: string): string | undefined {
+    try {
+        const pathname = decodeURIComponent(new URL(url, 'http://127.0.0.1').pathname)
+        return pathname.includes('\0') ? undefined : pathname
+    } catch {
+        return undefined
+    }
+}
+
 function serveStatic(pathname: string, response: ServerResponse): void {
-    const filePath = resolveStaticFile(pathname === '/' ? '/index.html' : decodeURIComponent(pathname))
+    const filePath = resolveStaticFile(pathname === '/' ? '/index.html' : pathname)
     if (filePath) {
         const contentType = contentTypes[path.extname(filePath)] ?? 'application/octet-stream'
         send(response, 200, contentType, fs.readFileSync(filePath))

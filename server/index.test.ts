@@ -41,4 +41,9 @@ describe('startServer', () => {
         expect(response.status).toBe(404)
         expect(await response.text()).not.toContain('dev-bubbles')
     })
+
+    it.each(['/%E0%A4%A', '/%00'])('rejects the malformed path %s', async (attempt) => {
+        const response = await fetch(`${baseUrl}${attempt}`)
+        expect(response.status).toBe(400)
+    })
 })
