@@ -50,6 +50,8 @@ describe('createSnapshotSource', () => {
         expect(allFiles(snapshot.root).find((file) => file.path === 'src/auth/session.ts')?.loc).toBeGreaterThan(0)
         expect(snapshot).toMatchObject({ bugs: [], pins: {}, errors: [] })
         expect(Date.parse(snapshot.generatedAt)).not.toBeNaN()
+        expect(snapshot.commits).toEqual([expect.objectContaining({ subject: 'Initial commit', author: 'dev-bubbles' })])
+        expect(snapshot).not.toHaveProperty('commit')
     })
 
     it('includes import and http edges', async () => {

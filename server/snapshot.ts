@@ -6,6 +6,7 @@ import type { PinRequest, Snapshot } from '../shared/schema.ts'
 import { resolveBugs } from './bugs.ts'
 import { buildTree, checkManifest, treeIds } from './components.ts'
 import { createEdgeIndex } from './edges.ts'
+import { listCommits } from './history.ts'
 import { createInventory } from './inventory.ts'
 import { configDir, errorMessage, formatJson, readJsonFile } from './json-file.ts'
 
@@ -34,7 +35,7 @@ export function createSnapshotSource(repoRoot: string, options: { trackedOnly: b
         const manifest = readManifest(errors)
         const bugsFile = readBugs(errors)
         const layout = readLayout(errors)
-        const files = await inventory.scan(manifest?.ignore ?? [])
+        const [files, commits] = await Promise.all([inventory.scan(manifest?.ignore ?? []), listCommits(repoRoot)])
         const root = buildTree(repoName, files, manifest)
         const nodeIds = treeIds(root)
         // A manual http edge can name a component that has no files and so no node
@@ -42,7 +43,7 @@ export function createSnapshotSource(repoRoot: string, options: { trackedOnly: b
             .filter((edge) => nodeIds.has(edge.from) && nodeIds.has(edge.to))
         const { bugs, errors: bugErrors } = resolveBugs(bugsFile, nodeIds)
         errors.push(...bugErrors)
-        return { root, edges, bugs, pins: layout?.pins ?? {}, errors, generatedAt: new Date().toISOString(), commits: [] }
+        return { root, edges, bugs, pins: layout?.pins ?? {}, errors, generatedAt: new Date().toISOString(), commits }
     }
 
     async function buildOrKeepLast(): Promise<Snapshot> {
