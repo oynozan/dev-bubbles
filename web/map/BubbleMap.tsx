@@ -114,6 +114,9 @@ export const BubbleMap = ({ snapshot }: BubbleMapProps) => {
         if (bug) controller.zoomToMarks(bug.marks.map((mark) => mark.nodeId))
     }, [controller])
 
+    // A file has no bubble of its own, so its mark opens the leaf that holds it
+    const focusMark = useCallback((id: string) => controller.focus(files.get(id)?.leaf.id ?? id), [controller, files])
+
     const closeDetails = useCallback(() => setSelectedId(undefined), [])
 
     return (
@@ -149,7 +152,7 @@ export const BubbleMap = ({ snapshot }: BubbleMapProps) => {
                     nodesById={nodesById}
                     files={files}
                     onSelectBug={selectBug}
-                    onSelectMark={controller.zoomTo}
+                    onSelectMark={focusMark}
                 />
                 <Legend />
             </aside>
