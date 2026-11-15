@@ -37,22 +37,34 @@ function readDirectory(absolutePath: string, relativePath: string, label: string
         if (entry.isDirectory()) {
             const directory = readDirectory(childAbsolutePath, childRelativePath, entry.name)
             if (directory.children?.length) children.push(directory)
-        } else if (entry.isFile()) {
-            children.push({
-                id: `file:${childRelativePath}`,
-                label: entry.name,
-                path: childRelativePath,
-                size: fs.statSync(childAbsolutePath).size,
-            })
+        } else {
+            const size = readFileSize(childAbsolutePath)
+            if (size !== undefined) {
+                children.push({ id: `file:${childRelativePath}`, label: entry.name, path: childRelativePath, size })
+            }
         }
     }
     return { id: `dir:${relativePath}`, label, path: relativePath, size: directorySize, children }
 }
 
+function readFileSize(filePath: string): number | undefined {
+    try {
+        const stats = fs.statSync(filePath)
+        // A linked directory is skipped because following it can loop back into an ancestor
+        return stats.isFile() ? stats.size : undefined
+    } catch {
+        return undefined
+    }
+}
+
 function readSortedEntries(directoryPath: string): fs.Dirent[] {
-    return fs.readdirSync(directoryPath, { withFileTypes: true })
-        .filter((entry) => !excludedNames.has(entry.name))
-        .sort((a, b) => compareNames(a.name, b.name))
+    try {
+        return fs.readdirSync(directoryPath, { withFileTypes: true })
+            .filter((entry) => !excludedNames.has(entry.name))
+            .sort((a, b) => compareNames(a.name, b.name))
+    } catch {
+        return []
+    }
 }
 
 function compareNames(a: string, b: string): number {

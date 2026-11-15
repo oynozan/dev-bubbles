@@ -20,6 +20,10 @@ describe('buildSnapshot', () => {
         fs.mkdirSync(packageDir, { recursive: true })
         fs.writeFileSync(path.join(packageDir, 'index.js'), 'module.exports = {}\n')
         fs.mkdirSync(path.join(fixtureDir, 'empty'))
+        fs.symlinkSync(path.join(fixtureDir, 'src', 'lib'), path.join(fixtureDir, 'lib-link'), 'junction')
+        fs.mkdirSync(path.join(fixtureDir, 'gone'))
+        fs.symlinkSync(path.join(fixtureDir, 'gone'), path.join(fixtureDir, 'gone-link'), 'junction')
+        fs.rmdirSync(path.join(fixtureDir, 'gone'))
         root = buildSnapshot(fixtureDir).root
         nodes = flatten(root)
     })
@@ -42,6 +46,21 @@ describe('buildSnapshot', () => {
         const paths = nodes.map((node) => node.path)
         expect(paths.filter((nodePath) => /(^|\/)(\.git|node_modules)(\/|$)/.test(nodePath))).toEqual([])
         expect(paths).not.toContain('empty')
+    })
+
+    it('skips links to directories and links whose target is gone', () => {
+        const paths = nodes.map((node) => node.path)
+        expect(paths.filter((nodePath) => /^(lib|gone)-link(\/|$)/.test(nodePath))).toEqual([])
+    })
+
+    it.skipIf(process.platform === 'win32')('follows links to files', () => {
+        fs.symlinkSync('session.ts', path.join(fixtureDir, 'src', 'auth', 'session-link.ts'))
+        const link = flatten(buildSnapshot(fixtureDir).root).find((node) => node.id === 'file:src/auth/session-link.ts')
+        expect(link?.size).toBe(fs.statSync(path.join(fixtureDir, 'src', 'auth', 'session.ts')).size)
+    })
+
+    it('reads a directory it cannot list as empty', () => {
+        expect(buildSnapshot(path.join(fixtureDir, 'missing')).root.children).toEqual([])
     })
 
     it('uses forward-slash paths in every id', () => {
