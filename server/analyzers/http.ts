@@ -109,6 +109,10 @@ export function matchesRoute(call: HttpCall, route: Route): boolean {
     return callSegments.length === routeSegments.length
 }
 
+export function isCatchAllRoute(route: Route): boolean {
+    return pathSegments(route.path).some(isRestSegment)
+}
+
 function pathSegments(path: string): string[] {
     return path.split('/').filter((segment) => segment !== '')
 }

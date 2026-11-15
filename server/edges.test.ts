@@ -132,6 +132,18 @@ describe('createEdgeIndex on the sample app', () => {
     })
 })
 
+describe('createEdgeIndex catch-all routes', () => {
+    it('link only the calls that no specific route takes', () => {
+        const repo = makeRepo()
+        writeFile(repo, 'src/api/spa.ts', "app.get('/*', serveIndex)\n")
+        writeFile(repo, 'web/src/about.ts', "fetch('/about')\n")
+        const { edges } = createEdgeIndex(repo).update(listFiles(repo), undefined)
+        expect(edges.filter((edge) => edge.to === 'file:src/api/spa.ts')).toEqual([
+            { from: 'file:web/src/about.ts', to: 'file:src/api/spa.ts', kind: 'http', label: 'GET /*' },
+        ])
+    })
+})
+
 describe('createEdgeIndex updates', () => {
     it('follows edited, added and removed files and tsconfig changes', () => {
         const repo = makeRepo()

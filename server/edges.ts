@@ -3,7 +3,7 @@ import path from 'node:path'
 import { ResolverFactory } from 'oxc-resolver'
 import { fileId } from '../shared/schema.ts'
 import type { Edge, Manifest } from '../shared/schema.ts'
-import { matchesRoute } from './analyzers/http.ts'
+import { isCatchAllRoute, matchesRoute } from './analyzers/http.ts'
 import { jsTsAnalyzer } from './analyzers/js-ts.ts'
 import type { Analyzer, FileAnalysis } from './analyzers/types.ts'
 
@@ -121,7 +121,9 @@ function findHttpEdges(cache: Map<string, CachedFile>): EdgeResult {
         for (const call of analysis.calls) {
             const matches = routes.filter(({ route }) => matchesRoute(call, route))
             if (matches.length === 0) unmatchedCalls.push({ file, ...call })
-            for (const match of matches) {
+            // A catch-all route only handles the calls that no specific route takes
+            const specificMatches = matches.filter(({ route }) => !isCatchAllRoute(route))
+            for (const match of specificMatches.length > 0 ? specificMatches : matches) {
                 const label = `${call.method} ${match.route.path}`
                 edges.push({ from: fileId(file), to: fileId(match.file), kind: 'http', label })
             }
