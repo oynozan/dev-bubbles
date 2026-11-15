@@ -4,7 +4,7 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http'
 import path from 'node:path'
 import { pinRequestSchema } from '../shared/schema.ts'
 import type { Snapshot } from '../shared/schema.ts'
-import { findRepoRoot } from './inventory.ts'
+import { findGitIndexPath, findRepoRoot } from './inventory.ts'
 import { findPackageRoot } from './package-root.ts'
 import { createSnapshotSource } from './snapshot.ts'
 import type { SnapshotSource } from './snapshot.ts'
@@ -55,7 +55,7 @@ export async function startServer({ repo, port, trackedOnly }: ServerOptions): P
         })
     })
     await listen(server, port)
-    const watcher = await watchRepo(repoRoot, () => void refresh())
+    const watcher = await watchRepo(repoRoot, await findGitIndexPath(repoRoot), () => void refresh())
     server.on('close', () => void watcher.close())
     return server
 }

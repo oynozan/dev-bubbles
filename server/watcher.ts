@@ -8,16 +8,25 @@ export type RepoWatcher = {
 const ignoredSegments = new Set(['.git', 'node_modules', 'dist', 'build', '.next'])
 const debounceMs = 300
 
+// A file written nonstop, such as a dev server log, still lets a rescan through
+const maxWaitMs = 600
+
 // Resolves once the initial crawl is done, so changes made right after are not missed
-export function watchRepo(repoRoot: string, onChange: () => void): Promise<RepoWatcher> {
+export function watchRepo(repoRoot: string, gitIndexPath: string, onChange: () => void): Promise<RepoWatcher> {
     let timer: NodeJS.Timeout | undefined
-    const watcher = watch(repoRoot, {
+    let burstStart: number | undefined
+    const watcher = watch([repoRoot, path.dirname(gitIndexPath)], {
         ignoreInitial: true,
-        ignored: (filePath) => isIgnoredPath(repoRoot, filePath),
+        ignored: (filePath) => isIgnoredPath(repoRoot, gitIndexPath, path.resolve(filePath)),
     })
     watcher.on('all', () => {
+        burstStart ??= Date.now()
         clearTimeout(timer)
-        timer = setTimeout(onChange, debounceMs)
+        const wait = Math.min(debounceMs, burstStart + maxWaitMs - Date.now())
+        timer = setTimeout(() => {
+            burstStart = undefined
+            onChange()
+        }, Math.max(0, wait))
     })
     watcher.on('error', (error) => {
         console.error(`Watcher error: ${error instanceof Error ? error.message : String(error)}`)
@@ -31,12 +40,9 @@ export function watchRepo(repoRoot: string, onChange: () => void): Promise<RepoW
     })
 }
 
-function isIgnoredPath(repoRoot: string, filePath: string): boolean {
+// git add and git rm change the file set through the git index alone
+function isIgnoredPath(repoRoot: string, gitIndexPath: string, filePath: string): boolean {
+    if (filePath === gitIndexPath || filePath === path.dirname(gitIndexPath)) return false
     const segments = path.relative(repoRoot, filePath).split(path.sep)
-    return !isGitIndexPath(segments) && segments.some((segment) => ignoredSegments.has(segment))
-}
-
-// git add and git rm change the file set through .git/index alone
-function isGitIndexPath(segments: string[]): boolean {
-    return segments[0] === '.git' && (segments.length === 1 || (segments.length === 2 && segments[1] === 'index'))
+    return segments[0] === '..' || segments.some((segment) => ignoredSegments.has(segment))
 }
