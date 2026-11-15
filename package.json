@@ -22,10 +22,14 @@
         "fixture": "tsx scripts/make-fixture.ts"
     },
     "dependencies": {
+        "chokidar": "^4.0.3",
         "d3": "^7.9.2",
         "micromatch": "^4.0.8",
+        "oxc-parser": "^0.158.0",
+        "oxc-resolver": "^11.24.2",
         "react": "^19.3.1",
-        "react-dom": "^19.3.1"
+        "react-dom": "^19.3.1",
+        "zod": "^4.6.7"
     },
     "devDependencies": {
         "@types/d3": "^7.4.3",
