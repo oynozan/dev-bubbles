@@ -10,7 +10,9 @@ describe('nextRoutes', () => {
     })
 
     it('removes route groups and finds the app folder under src or a package', () => {
-        expect(nextRoutes('src/app/(admin)/api/stats/route.js', ['POST'])).toEqual([{ method: 'POST', path: '/api/stats' }])
+        expect(nextRoutes('src/app/(admin)/api/stats/route.js', ['POST'])).toEqual([
+            { method: 'POST', path: '/api/stats' },
+        ])
         expect(nextRoutes('apps/web/app/(shop)/api/docs/[...slug]/route.tsx', ['GET'])).toEqual([
             { method: 'GET', path: '/api/docs/[...slug]' },
         ])

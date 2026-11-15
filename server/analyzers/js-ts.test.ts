@@ -24,7 +24,9 @@ describe('jsTsAnalyzer', () => {
             "const cjs = require('./cjs')",
             "const other = load('./other')",
         ])
-        expect(imports.sort()).toEqual(['./a', './b', './cjs', './lazy', './named', './side-effect', './star', './template', './types'])
+        expect(imports.sort()).toEqual([
+            './a', './b', './cjs', './lazy', './named', './side-effect', './star', './template', './types',
+        ])
     })
 
     it('parses JSX in plain .js files', () => {
