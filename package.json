@@ -18,6 +18,7 @@
     "scripts": {
         "dev": "concurrently -k -n server,web \"tsx watch bin/cli.ts\" \"vite\"",
         "build": "vite build && tsc -p tsconfig.build.json",
+        "prepare": "npm run build",
         "start": "node dist/bin/cli.js",
         "test": "vitest run",
         "typecheck": "tsc --noEmit",
