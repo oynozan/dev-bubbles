@@ -11,7 +11,7 @@ export type UnmatchedCall = { file: string, method: string, path: string }
 
 export type EdgeResult = { edges: Edge[], unmatchedCalls: UnmatchedCall[] }
 
-type FileStamp = { path: string, mtimeMs: number, size: number }
+export type FileStamp = { path: string, mtimeMs: number, size: number }
 
 type EdgeIndex = { update(files: FileStamp[], manifest: Manifest | undefined): EdgeResult }
 

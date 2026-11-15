@@ -4,9 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { makeFixture } from '../scripts/make-fixture.ts'
 import type { Edge } from '../shared/schema.ts'
 import { createEdgeIndex } from './edges.ts'
-import type { EdgeResult } from './edges.ts'
-
-type FileStamp = { path: string, mtimeMs: number, size: number }
+import type { EdgeResult, FileStamp } from './edges.ts'
 
 const fixtures: string[] = []
 

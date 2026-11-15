@@ -9,6 +9,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { makeFixture } from '../scripts/make-fixture.ts'
 import { ROOT_ID } from '../shared/schema.ts'
 import type { Snapshot, TreeNode } from '../shared/schema.ts'
+import { flattenTree } from './components.ts'
 import { startServer } from './index.ts'
 
 type EventReader = {
@@ -17,12 +18,7 @@ type EventReader = {
 }
 
 function findNode(root: TreeNode, id: string): TreeNode | undefined {
-    if (root.id === id) return root
-    for (const child of root.children ?? []) {
-        const found = findNode(child, id)
-        if (found) return found
-    }
-    return undefined
+    return flattenTree(root).find((node) => node.id === id)
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -148,7 +144,7 @@ describe('startServer', () => {
         expect((await fetch(`${baseUrl}/api/layout`)).status).toBe(405)
     })
 
-    it('no longer serves the snapshot as JSON', async () => {
+    it('answers 404 for /api/snapshot', async () => {
         expect((await fetch(`${baseUrl}/api/snapshot`)).status).toBe(404)
     })
 

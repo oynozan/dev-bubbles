@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeFixture } from '../scripts/make-fixture.ts'
 import { ROOT_ID } from '../shared/schema.ts'
 import type { Manifest, TreeNode } from '../shared/schema.ts'
+import { flattenTree } from './components.ts'
 import { createSnapshotSource } from './snapshot.ts'
 import type { SnapshotSource } from './snapshot.ts'
 
@@ -12,12 +13,8 @@ const manifest: Manifest = {
     components: [{ id: 'auth', label: 'Auth', include: ['src/auth/**'] }],
 }
 
-function flatten(node: TreeNode): TreeNode[] {
-    return [node, ...(node.children ?? []).flatMap(flatten)]
-}
-
 function nodeIds(root: TreeNode): string[] {
-    return flatten(root).map((node) => node.id)
+    return flattenTree(root).map((node) => node.id)
 }
 
 describe('createSnapshotSource', () => {
@@ -43,7 +40,7 @@ describe('createSnapshotSource', () => {
     it('builds the directory tree with line counts when there is no config', async () => {
         const snapshot = await source.rescan()
         expect(snapshot.root).toMatchObject({ id: ROOT_ID, kind: 'dir', label: path.basename(fixtureDir) })
-        const session = flatten(snapshot.root).find((node) => node.id === 'file:src/auth/session.ts')
+        const session = flattenTree(snapshot.root).find((node) => node.id === 'file:src/auth/session.ts')
         expect(session).toMatchObject({ kind: 'file', path: 'src/auth/session.ts' })
         expect(session?.loc).toBeGreaterThan(0)
         expect(snapshot).toMatchObject({ bugs: [], pins: {}, errors: [] })
@@ -86,7 +83,7 @@ describe('createSnapshotSource', () => {
         const duplicate = { id: 'auth', label: 'Login', include: ['src/lib/**'] }
         writeConfig('components.json', { ...manifest, components: [...manifest.components, duplicate] })
         const broken = await source.rescan()
-        expect(flatten(broken.root).filter((node) => node.id === 'auth')).toEqual([
+        expect(flattenTree(broken.root).filter((node) => node.id === 'auth')).toEqual([
             expect.objectContaining({ label: 'Auth' }),
         ])
         expect(broken.errors).toEqual([expect.stringContaining('duplicate component id auth')])
