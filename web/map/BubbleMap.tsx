@@ -8,7 +8,7 @@
  * selected bubble, and writes transforms, edge paths and the counter-scaled mark stripes and
  * badges straight to the DOM.
  */
-import { drag, forceCollide, forceSimulation, forceX, forceY, select, zoom, zoomIdentity } from 'd3'
+import { drag, forceCollide, forceSimulation, forceX, forceY, packEnclose, select, zoom, zoomIdentity } from 'd3'
 import type { D3DragEvent, D3ZoomEvent, Simulation, SubjectPosition, ZoomTransform } from 'd3'
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ROOT_ID } from '../../shared/schema.ts'
@@ -106,8 +106,8 @@ export const BubbleMap = ({ snapshot }: BubbleMapProps) => {
     }, [controller])
 
     useLayoutEffect(
-        () => controller.setSnapshot(tree, nodesById, lineages, snapshot.pins),
-        [controller, tree, nodesById, lineages, snapshot.pins],
+        () => controller.setSnapshot(tree, nodesById, lineages, snapshot.pins, snapshot.commit),
+        [controller, tree, nodesById, lineages, snapshot.pins, snapshot.commit],
     )
 
     useLayoutEffect(() => controller.setSelected(selectedNode?.id), [controller, selectedNode])
@@ -183,6 +183,7 @@ class MapController implements BubbleActions, EdgeActions {
     private svg: SVGSVGElement | undefined
     private stripes: SVGPatternElement | undefined
     private lastRootFit: ZoomTransform | undefined
+    private commit: string | undefined
     private hoveredId: string | undefined
     private selectedId: string | undefined
     private highlightedId: string | undefined
@@ -241,7 +242,11 @@ class MapController implements BubbleActions, EdgeActions {
         nodesById: ReadonlyMap<string, LayoutNode>,
         lineages: Lineages,
         pins: Readonly<Record<string, Pin>>,
+        commit: string | undefined,
     ): void {
+        // Spots from another commit can wedge resized bubbles into each other, so a switch packs the map afresh
+        if (commit !== this.commit) this.resetLayout()
+        this.commit = commit
         for (const id of syncBubbles(this.bubbles, tree, pins)) this.dirtyGroups.add(id)
         this.tree = tree
         this.nodesById = nodesById
@@ -290,7 +295,9 @@ class MapController implements BubbleActions, EdgeActions {
     zoomTo = (id: string): void => {
         const node = this.nodesById.get(id)
         if (!node) return
-        const transform = toZoomTransform(absolutePosition(this.bubbles, id), node.r, this.size)
+        const transform = id === ROOT_ID
+            ? this.rootFit()
+            : toZoomTransform(absolutePosition(this.bubbles, id), node.r, this.size)
         if (id === ROOT_ID) this.lastRootFit = transform
         this.animateZoom(transform, id)
     }
@@ -339,14 +346,28 @@ class MapController implements BubbleActions, EdgeActions {
     }
 
     // The root follows regrouping and resizing until the user moves the view away from the last fit
-    private updateRootZoom(): void {
+    private updateRootZoom(isAnimated = false): void {
         if (!this.tree || !this.svg || !this.size.width || !this.size.height) return
-        const rootFit = toZoomTransform([0, 0], this.tree.r, this.size)
+        const rootFit = this.rootFit()
         this.zoomBehavior.scaleExtent([rootFit.k / 4, maxZoom])
         const isViewUntouched = !this.lastRootFit || isSameTransform(this.view, this.lastRootFit)
         if (!isViewUntouched || isSameTransform(this.view, rootFit)) return
         this.lastRootFit = rootFit
-        select(this.svg).call(this.zoomBehavior.transform, rootFit)
+        if (isAnimated) select(this.svg).transition().duration(zoomDuration).call(this.zoomBehavior.transform, rootFit)
+        else select(this.svg).call(this.zoomBehavior.transform, rootFit)
+    }
+
+    // The repo draws no circle and pins may hold top-level bubbles outside its packed radius
+    private rootFit(): ZoomTransform {
+        const topLevel = (this.tree?.children ?? []).flatMap((child) => this.bubbles.get(child.id) ?? [])
+        const { x, y, r } = topLevel.length ? packEnclose(topLevel) : { x: 0, y: 0, r: this.tree?.r ?? 1 }
+        return toZoomTransform([x, y], r, this.size)
+    }
+
+    private resetLayout(): void {
+        for (const simulation of this.simulations.values()) simulation.stop()
+        this.simulations.clear()
+        this.bubbles.clear()
     }
 
     private refreshOpenIds(): boolean {
@@ -397,6 +418,8 @@ class MapController implements BubbleActions, EdgeActions {
             this.placeAll(simulation.nodes())
             this.queueEdgeDraw()
         })
+        // Top-level bubbles that settled away from where the last fit saw them pull the view along
+        if (isRoot) simulation.on('end', () => this.updateRootZoom(true))
         return simulation
     }
 
