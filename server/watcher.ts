@@ -1,5 +1,6 @@
 import path from 'node:path'
 import { watch } from 'chokidar'
+import { errorMessage } from './json-file.ts'
 
 export type RepoWatcher = {
     close(): Promise<void>
@@ -29,7 +30,7 @@ export function watchRepo(repoRoot: string, gitIndexPath: string, onChange: () =
         }, Math.max(0, wait))
     })
     watcher.on('error', (error) => {
-        console.error(`Watcher error: ${error instanceof Error ? error.message : String(error)}`)
+        console.error(`Watcher error: ${errorMessage(error)}`)
     })
     const close = async () => {
         clearTimeout(timer)

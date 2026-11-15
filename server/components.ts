@@ -1,6 +1,7 @@
 import micromatch from 'micromatch'
 import { dirId, fileId, ROOT_ID, UNMAPPED_ID } from '../shared/schema.ts'
 import type { ComponentDef, Manifest, TreeNode } from '../shared/schema.ts'
+import { compareStrings } from './inventory.ts'
 import type { InventoryFile } from './inventory.ts'
 
 export type ComponentEntry = {
@@ -141,10 +142,4 @@ function compareNodes(a: TreeNode, b: TreeNode): number {
 
 function compareByPath(a: InventoryFile, b: InventoryFile): number {
     return compareStrings(a.path, b.path)
-}
-
-function compareStrings(a: string, b: string): number {
-    if (a < b) return -1
-    if (a > b) return 1
-    return 0
 }

@@ -8,9 +8,9 @@ import { buildTree, checkManifest, flattenTree, listComponents } from '../server
 import { createEdgeIndex } from '../server/edges.ts'
 import type { UnmatchedCall } from '../server/edges.ts'
 import { startServer } from '../server/index.ts'
-import { createInventory, findRepoRoot } from '../server/inventory.ts'
+import { compareStrings, createInventory, findRepoRoot } from '../server/inventory.ts'
 import type { InventoryFile } from '../server/inventory.ts'
-import { readJsonFile } from '../server/json-file.ts'
+import { configDir, errorMessage, readJsonFile } from '../server/json-file.ts'
 import type { JsonFileResult } from '../server/json-file.ts'
 import { findPackageRoot } from '../server/package-root.ts'
 import { bugsFileSchema, fileId, manifestSchema, UNMAPPED_ID } from '../shared/schema.ts'
@@ -26,7 +26,6 @@ type RepoState = {
 const defaultPort = 4747
 const listLimit = 200
 const importPairLimit = 30
-const configDir = '.dev-bubbles'
 const commands = new Set(['serve', 'init', 'summary', 'validate'])
 
 const usage = `Usage: dev-bubbles [command] [repo] [options]
@@ -46,10 +45,6 @@ Options:
 function fail(message: string): never {
     console.error(message)
     process.exit(1)
-}
-
-function errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error)
 }
 
 function readArgs() {
@@ -196,7 +191,7 @@ function describeImportPairs(edges: Edge[]): string[] {
         if (from !== to) counts.set(pair, (counts.get(pair) ?? 0) + 1)
     }
     return [...counts]
-        .sort(([pairA, countA], [pairB, countB]) => countB - countA || (pairA < pairB ? -1 : 1))
+        .sort(([pairA, countA], [pairB, countB]) => countB - countA || compareStrings(pairA, pairB))
         .slice(0, importPairLimit)
         .map(([pair, count]) => `${pair}: ${count}`)
 }

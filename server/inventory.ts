@@ -3,6 +3,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import micromatch from 'micromatch'
+import { configDir } from './json-file.ts'
 
 export type InventoryFile = {
     path: string
@@ -20,7 +21,6 @@ type InspectedFile = {
 
 const execFileAsync = promisify(execFile)
 const gitMaxBuffer = 256 * 1024 * 1024
-const configDirPrefix = '.dev-bubbles/'
 const maxFileSize = 1024 * 1024
 const binaryProbeSize = 8 * 1024
 const newlineByte = 10
@@ -63,7 +63,7 @@ export function createInventory(
     return {
         async scan(ignore: string[]): Promise<InventoryFile[]> {
             const paths = (await listFiles(repoRoot, options.trackedOnly))
-                .filter((filePath) => !filePath.startsWith(configDirPrefix))
+                .filter((filePath) => !filePath.startsWith(`${configDir}/`))
             const visiblePaths = (ignore.length > 0 ? micromatch.not(paths, ignore, { dot: true }) : paths)
                 .sort(compareStrings)
             const inspected = await mapInBatches(visiblePaths, inspectFile)
@@ -110,7 +110,7 @@ async function mapInBatches<T, R>(items: T[], map: (item: T) => Promise<R>): Pro
     return results
 }
 
-function compareStrings(a: string, b: string): number {
+export function compareStrings(a: string, b: string): number {
     if (a < b) return -1
     if (a > b) return 1
     return 0

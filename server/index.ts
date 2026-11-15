@@ -5,6 +5,7 @@ import path from 'node:path'
 import { pinRequestSchema } from '../shared/schema.ts'
 import type { Snapshot } from '../shared/schema.ts'
 import { findGitIndexPath, findRepoRoot } from './inventory.ts'
+import { errorMessage } from './json-file.ts'
 import { findPackageRoot } from './package-root.ts'
 import { createSnapshotSource } from './snapshot.ts'
 import type { SnapshotSource } from './snapshot.ts'
@@ -219,7 +220,7 @@ function sendServerError(response: ServerResponse, error: unknown): void {
         response.destroy()
         return
     }
-    sendJson(response, 500, { error: error instanceof Error ? error.message : String(error) })
+    sendJson(response, 500, { error: errorMessage(error) })
 }
 
 function sendJson(response: ServerResponse, status: number, body: unknown): void {

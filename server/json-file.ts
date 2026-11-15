@@ -2,6 +2,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { z } from 'zod'
 
+export const configDir = '.dev-bubbles'
+
 export type JsonFileResult<T> =
     | { status: 'missing' }
     | { status: 'ok', value: T }
@@ -40,6 +42,6 @@ function isMissingFile(error: unknown): boolean {
     return error instanceof Error && 'code' in error && error.code === 'ENOENT'
 }
 
-function errorMessage(error: unknown): string {
+export function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error)
 }

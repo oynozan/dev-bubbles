@@ -7,7 +7,7 @@ import { resolveBugs } from './bugs.ts'
 import { buildTree, checkManifest, flattenTree } from './components.ts'
 import { createEdgeIndex } from './edges.ts'
 import { createInventory } from './inventory.ts'
-import { readJsonFile } from './json-file.ts'
+import { configDir, errorMessage, readJsonFile } from './json-file.ts'
 
 export type SnapshotSource = {
     rescan(): Promise<Snapshot>
@@ -18,12 +18,12 @@ type LastValidReader<T> = (errors: string[]) => T | undefined
 
 export function createSnapshotSource(repoRoot: string, options: { trackedOnly: boolean }): SnapshotSource {
     const repoName = path.basename(repoRoot)
-    const configDir = path.join(repoRoot, '.dev-bubbles')
-    const layoutPath = path.join(configDir, 'layout.json')
+    const configRoot = path.join(repoRoot, configDir)
+    const layoutPath = path.join(configRoot, 'layout.json')
     const inventory = createInventory(repoRoot, options)
     const edgeIndex = createEdgeIndex(repoRoot)
-    const readManifest = createLastValidReader(path.join(configDir, 'components.json'), manifestSchema, checkManifest)
-    const readBugs = createLastValidReader(path.join(configDir, 'bugs.json'), bugsFileSchema)
+    const readManifest = createLastValidReader(path.join(configRoot, 'components.json'), manifestSchema, checkManifest)
+    const readBugs = createLastValidReader(path.join(configRoot, 'bugs.json'), bugsFileSchema)
     const readLayout = createLastValidReader(layoutPath, layoutFileSchema)
     let lastBuilt = emptySnapshot(repoName)
     let running: Promise<Snapshot> | undefined
@@ -50,7 +50,7 @@ export function createSnapshotSource(repoRoot: string, options: { trackedOnly: b
             lastBuilt = await build()
             return lastBuilt
         } catch (error) {
-            const message = `Rescan failed: ${error instanceof Error ? error.message : String(error)}`
+            const message = `Rescan failed: ${errorMessage(error)}`
             return { ...lastBuilt, errors: [...lastBuilt.errors, message], generatedAt: new Date().toISOString() }
         }
     }
