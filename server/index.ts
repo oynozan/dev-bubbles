@@ -22,6 +22,9 @@ const contentTypes: Record<string, string> = {
 
 const webDir = path.join(findPackageRoot(import.meta.dirname), 'dist', 'web')
 
+// Other hostnames are refused so a DNS rebinding page cannot read the repo
+const localHostnames = new Set(['127.0.0.1', 'localhost'])
+
 export function startServer({ repo, port }: ServerOptions): Promise<Server> {
     const server = createServer((request, response) => {
         try {
@@ -40,6 +43,10 @@ export function startServer({ repo, port }: ServerOptions): Promise<Server> {
 }
 
 function handleRequest(repo: string, request: IncomingMessage, response: ServerResponse): void {
+    if (!isLocalHost(request.headers.host)) {
+        sendText(response, 403, 'Forbidden host')
+        return
+    }
     if (request.method !== 'GET' && request.method !== 'HEAD') {
         response.writeHead(405, { Allow: 'GET, HEAD' }).end()
         return
@@ -54,6 +61,10 @@ function handleRequest(repo: string, request: IncomingMessage, response: ServerR
         return
     }
     serveStatic(pathname, response)
+}
+
+function isLocalHost(host: string | undefined): boolean {
+    return localHostnames.has(host?.replace(/:\d*$/, '') ?? '')
 }
 
 function readPathname(url: string): string | undefined {

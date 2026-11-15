@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import http from 'node:http'
 import type { Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -45,5 +46,15 @@ describe('startServer', () => {
     it.each(['/%E0%A4%A', '/%00'])('rejects the malformed path %s', async (attempt) => {
         const response = await fetch(`${baseUrl}${attempt}`)
         expect(response.status).toBe(400)
+    })
+
+    it('rejects a request for a host that is not local', async () => {
+        const status = await new Promise<number | undefined>((resolve, reject) => {
+            http.get(`${baseUrl}/api/snapshot`, { headers: { host: 'attacker.example' } }, (response) => {
+                response.resume()
+                resolve(response.statusCode)
+            }).on('error', reject)
+        })
+        expect(status).toBe(403)
     })
 })
