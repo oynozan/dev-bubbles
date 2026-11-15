@@ -1,6 +1,6 @@
 import { parseSync, Visitor } from 'oxc-parser'
 import type { CallExpression } from 'oxc-parser'
-import { httpCall, nextRoutes, serverRoute, staticString } from './http.ts'
+import { httpCall, nextRoutes, registeredRoutes, staticString } from './http.ts'
 import type { Analyzer, FileAnalysis, HttpCall } from './types.ts'
 
 const sourceFile = /\.(?:ts|tsx|js|jsx|mjs|cjs)$/
@@ -30,11 +30,12 @@ function analyzeJsTs(path: string, source: string): FileAnalysis {
                 const specifier = staticString(node.source)
                 if (specifier) imports.add(specifier)
             },
+            ExpressionStatement(node) {
+                routes.push(...registeredRoutes(node))
+            },
             CallExpression(node) {
                 const required = isRequire(node) ? staticString(node.arguments[0]) : undefined
                 if (required) imports.add(required)
-                const route = serverRoute(node)
-                if (route) routes.push(route)
                 const call = httpCall(node)
                 if (call) calls.push(call)
             },

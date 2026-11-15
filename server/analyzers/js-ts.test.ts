@@ -47,6 +47,7 @@ describe('jsTsAnalyzer', () => {
             "router.post('/api/users/:id/', requireSession, updateUser)",
             "fastify.delete('/api/items/:id', async () => {})",
             "hono.all('/api/proxy/*', proxy)",
+            "app.get('/api/a', listA).post('/api/b', createB)",
             "cache.get('/api/users')",
             "axios.get('/api/users', config)",
             "client.get('/api/users', { params })",
@@ -58,7 +59,23 @@ describe('jsTsAnalyzer', () => {
             { method: 'POST', path: '/api/users/:id' },
             { method: 'DELETE', path: '/api/items/:id' },
             { method: 'ALL', path: '/api/proxy/*' },
+            { method: 'GET', path: '/api/a' },
+            { method: 'POST', path: '/api/b' },
         ])
+    })
+
+    it('leaves out client calls on HTTP client instances and caches', () => {
+        const { routes } = analyze('web/src/apiClient.ts', [
+            'const api = axios.create()',
+            "export const createUser = (body) => api.post('/api/users', body)",
+            'export async function loadUser(id) {',
+            '    return api.get(`/api/users/${id}`, config)',
+            '}',
+            'api.put(`/api/users/${id}`, body)',
+            "const users = cache.get('/api/users', fallback)",
+            "this.http.post('/api/x', body).subscribe(done)",
+        ])
+        expect(routes).toEqual([])
     })
 
     it('finds Next.js route handlers from exported method names', () => {

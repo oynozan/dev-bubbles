@@ -1,4 +1,12 @@
-import type { Argument, CallExpression, Expression, ObjectExpression, PropertyKey, TemplateLiteral } from 'oxc-parser'
+import type {
+    Argument,
+    CallExpression,
+    Expression,
+    ExpressionStatement,
+    ObjectExpression,
+    PropertyKey,
+    TemplateLiteral,
+} from 'oxc-parser'
 import type { HttpCall, Route } from './types.ts'
 
 const serverMethods = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'all'])
@@ -10,15 +18,29 @@ const pagesApiFile = /(?:^|\/)pages\/(api\/.*)\.(?:ts|js|tsx|jsx)$/
 
 /* Routes */
 
-export function serverRoute(call: CallExpression): Route | undefined {
+// Registrations are bare statements, so awaited, returned or assigned client calls never count
+export function registeredRoutes(statement: ExpressionStatement): Route[] {
+    const routes: Route[] = []
+    let expression = statement.expression
+    while (expression.type === 'CallExpression' && expression.callee.type === 'MemberExpression') {
+        const route = serverRoute(expression)
+        if (!route) break
+        routes.unshift(route)
+        expression = expression.callee.object
+    }
+    return routes
+}
+
+function serverRoute(call: CallExpression): Route | undefined {
     const { callee, arguments: args } = call
     if (callee.type !== 'MemberExpression' || callee.computed || callee.property.type !== 'Identifier') return undefined
     const method = callee.property.name
-    // A handler argument keeps Map.get and HTTP client calls out
+    // A handler argument keeps Map.get and Map.delete out
     const hasHandler = args.length >= 2 && args.at(-1)?.type !== 'ObjectExpression'
     if (!serverMethods.has(method) || !hasHandler || isIdentifier(callee.object, 'axios')) return undefined
     const path = localPath(args[0])
-    return path === undefined ? undefined : { method: method.toUpperCase(), path }
+    // Server routes name parameters with :id, so an interpolated path is a client call
+    return path === undefined || path.includes('${') ? undefined : { method: method.toUpperCase(), path }
 }
 
 export function nextRoutes(filePath: string, exportNames: string[]): Route[] {
