@@ -13,7 +13,8 @@
                 { "id": "server.scanner", "label": "Repo Scanner", "include": ["server/inventory*.ts", "server/watcher*.ts"] },
                 { "id": "server.mapping", "label": "Component Mapping", "include": ["server/components*.ts"] },
                 { "id": "server.bugs", "label": "Bug Marks", "include": ["server/bugs*.ts"] },
-                { "id": "server.config", "label": "Config Files", "include": ["server/json-file*.ts"] }
+                { "id": "server.config", "label": "Config Files", "include": ["server/json-file*.ts"] },
+                { "id": "server.history", "label": "Commit History", "include": ["server/history*.ts"] }
             ]
         },
         {
@@ -45,7 +46,8 @@
             "label": "Fixture App",
             "include": ["fixtures/**", "scripts/**"],
             "children": [
-                { "id": "fixture.builder", "label": "Fixture Builder", "include": ["scripts/**"] },
+                { "id": "fixture.builder", "label": "Fixture Builder", "include": ["scripts/make-fixture*.ts"] },
+                { "id": "fixture.demo", "label": "Bug Flow Demo", "include": ["scripts/demo-bug*.ts"] },
                 { "id": "fixture.api", "label": "API Server", "include": ["fixtures/sample-app/src/api/**"] },
                 {
                     "id": "fixture.auth",
@@ -53,10 +55,12 @@
                     "include": ["fixtures/sample-app/src/auth/**"],
                     "children": [
                         { "id": "fixture.auth.google", "label": "Google Connector", "include": ["fixtures/sample-app/src/auth/oauth/google/**"] },
-                        { "id": "fixture.auth.apple", "label": "Apple Connector", "include": ["fixtures/sample-app/src/auth/oauth/apple/**"] }
+                        { "id": "fixture.auth.apple", "label": "Apple Connector", "include": ["fixtures/sample-app/src/auth/oauth/apple/**"] },
+                        { "id": "fixture.auth.session", "label": "Session Store", "include": ["fixtures/sample-app/src/auth/session.ts"] },
+                        { "id": "fixture.auth.providers", "label": "Provider Loader", "include": ["fixtures/sample-app/src/auth/oauth/providers.ts"] }
                     ]
                 },
-                { "id": "fixture.helpers", "label": "Helpers and Config", "include": ["fixtures/sample-app/src/lib/**", "fixtures/sample-app/src/config/**"] },
+                { "id": "fixture.helpers", "label": "Helpers and Config", "include": ["fixtures/sample-app/src/lib/**", "fixtures/sample-app/src/config/**", "fixtures/sample-app/*"] },
                 { "id": "fixture.pages", "label": "Web Pages", "include": ["fixtures/sample-app/web/**"] }
             ]
         },
