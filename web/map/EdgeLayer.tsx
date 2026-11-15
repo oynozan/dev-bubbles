@@ -19,8 +19,11 @@ type EdgePathProps = {
 // The stylesheet picks one per edge state, since an arrow cannot inherit the opacity of its edge
 const arrowIds = ['edge-arrow', 'edge-arrow-related', 'edge-arrow-dimmed']
 
+// Past this many edges the arrow markers cost more raster time than the lines, so only hovered edges keep them
+const denseEdgeCount = 500
+
 export const EdgeLayer = ({ edges, actions }: EdgeLayerProps) => (
-    <g className="edges">
+    <g className={edges.length > denseEdgeCount ? 'edges dense' : 'edges'}>
         <defs>
             {/* Sized in stroke widths, which stay constant on screen under the non-scaling stroke */}
             {arrowIds.map((id) => (

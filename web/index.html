@@ -27,6 +27,8 @@
             .edge-arrow { fill: #d4d4d4; fill-opacity: 0.4; }
             .edge-focus .edge { stroke-opacity: 0.08; marker-end: url(#edge-arrow-dimmed); }
             .edge-focus .edge.related { stroke-opacity: 0.95; marker-end: url(#edge-arrow-related); }
+            .edges.dense .edge { marker-end: none; }
+            .edge-focus .edges.dense .edge.related { marker-end: url(#edge-arrow-related); }
             #edge-arrow-dimmed .edge-arrow { fill-opacity: 0.08; }
             #edge-arrow-related .edge-arrow { fill-opacity: 0.95; }
 
