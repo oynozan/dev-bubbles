@@ -67,6 +67,7 @@ const alphaMin = 0.005
 const dragThreshold = 4
 const zoomDuration = 750
 const maxZoom = 500
+const noBugs: SnapshotBug[] = []
 
 export const BubbleMap = ({ snapshot }: BubbleMapProps) => {
     const svgRef = useRef<SVGSVGElement>(null)
@@ -83,11 +84,13 @@ export const BubbleMap = ({ snapshot }: BubbleMapProps) => {
     const lineages = useMemo(() => indexLineages(tree), [tree])
     const files = useMemo(() => indexFiles(tree), [tree])
     const edges = useMemo(() => aggregateEdges(snapshot.edges, lineages, openIds), [snapshot.edges, lineages, openIds])
-    const selectedBug = snapshot.bugs.find((bug) => bug.id === selectedBugId)
-    const marks = useMemo(() => markNodes(snapshot.bugs, selectedBug?.id), [snapshot.bugs, selectedBug?.id])
+    // Bugs are live state, so a past commit shows none
+    const bugs = snapshot.commit === undefined ? snapshot.bugs : noBugs
+    const selectedBug = bugs.find((bug) => bug.id === selectedBugId)
+    const marks = useMemo(() => markNodes(bugs, selectedBug?.id), [bugs, selectedBug?.id])
     const hiddenMarks = useMemo(() => rollUpHiddenMarks(marks, lineages, openIds), [marks, lineages, openIds])
     const connections = useMemo(() => indexConnections(snapshot.edges), [snapshot.edges])
-    const marksById = useMemo(() => indexMarks(snapshot.bugs), [snapshot.bugs])
+    const marksById = useMemo(() => indexMarks(bugs), [bugs])
     const detailsIndex: DetailsIndex = useMemo(
         () => ({ nodesById, files, lineages, connections, marks: marksById }),
         [nodesById, files, lineages, connections, marksById],
@@ -147,7 +150,7 @@ export const BubbleMap = ({ snapshot }: BubbleMapProps) => {
             <Breadcrumb trail={trail.length ? trail : [tree]} onSelect={controller.zoomTo} />
             <aside className="map-side">
                 <BugPanel
-                    bugs={snapshot.bugs}
+                    bugs={bugs}
                     selectedBug={selectedBug}
                     nodesById={nodesById}
                     files={files}
