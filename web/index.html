@@ -25,7 +25,9 @@
 
             /* Stroke and fill opacity, since opacity on each of thousands of paths composites them one by one */
             .edge { fill: none; stroke: #d4d4d4; stroke-opacity: 0.4; marker-end: url(#edge-arrow); vector-effect: non-scaling-stroke; pointer-events: none; }
-            .edge.http { stroke-dasharray: 5 4; pointer-events: stroke; }
+            .edge.http { stroke-dasharray: 5 4; }
+            /* Only the hovered bubble's HTTP edges take the pointer, for their route tooltip */
+            .edge-focus .edge.http.related { pointer-events: stroke; }
             .edge-arrow { fill: #d4d4d4; fill-opacity: 0.4; }
             .edge-focus .edge { stroke-opacity: 0.08; marker-end: url(#edge-arrow-dimmed); }
             .edge-focus .edge.related { stroke-opacity: 0.95; marker-end: url(#edge-arrow-related); }
