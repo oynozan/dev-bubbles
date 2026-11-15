@@ -4,7 +4,7 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http'
 import path from 'node:path'
 import { pinRequestSchema } from '../shared/schema.ts'
 import type { Snapshot } from '../shared/schema.ts'
-import { findGitIndexPath, findRepoRoot } from './inventory.ts'
+import { findGitPath, findRepoRoot } from './inventory.ts'
 import { errorMessage } from './json-file.ts'
 import { findPackageRoot } from './package-root.ts'
 import { createSnapshotSource } from './snapshot.ts'
@@ -48,7 +48,7 @@ const localHostnames = new Set(['127.0.0.1', 'localhost'])
 // Resolves once listening, the first scan and then the watcher start in the background
 export async function startServer({ repo, port, trackedOnly }: ServerOptions): Promise<Server> {
     const repoRoot = await findRepoRoot(repo)
-    const gitIndexPath = await findGitIndexPath(repoRoot)
+    const gitFiles = await Promise.all(['index', 'logs/HEAD'].map((gitPath) => findGitPath(repoRoot, gitPath)))
     const snapshots = createSnapshotSource(repoRoot, { trackedOnly })
     const events = createEventStream()
     const refresh = async () => events.publish(await snapshots.rescan())
@@ -60,7 +60,7 @@ export async function startServer({ repo, port, trackedOnly }: ServerOptions): P
     await listen(server, port)
     const watcher = refresh().then(async () => {
         if (!server.listening) return undefined
-        const repoWatcher = await watchRepo(repoRoot, gitIndexPath, () => void refresh())
+        const repoWatcher = await watchRepo(repoRoot, gitFiles, () => void refresh())
         // Changes made before the watcher was ready sent no event
         if (server.listening) void refresh()
         return repoWatcher

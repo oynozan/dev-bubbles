@@ -13,12 +13,12 @@ const debounceMs = 300
 const maxWaitMs = 600
 
 // Resolves once the initial crawl is done, so changes made right after are not missed
-export function watchRepo(repoRoot: string, gitIndexPath: string, onChange: () => void): Promise<RepoWatcher> {
+export function watchRepo(repoRoot: string, gitFiles: string[], onChange: () => void): Promise<RepoWatcher> {
     let timer: NodeJS.Timeout | undefined
     let burstStart: number | undefined
-    const watcher = watch([repoRoot, path.dirname(gitIndexPath)], {
+    const watcher = watch([repoRoot, ...new Set(gitFiles.map((gitFile) => path.dirname(gitFile)))], {
         ignoreInitial: true,
-        ignored: (filePath) => isIgnoredPath(repoRoot, gitIndexPath, path.resolve(filePath)),
+        ignored: (filePath) => isIgnoredPath(repoRoot, gitFiles, path.resolve(filePath)),
     })
     watcher.on('all', () => {
         burstStart ??= Date.now()
@@ -41,9 +41,9 @@ export function watchRepo(repoRoot: string, gitIndexPath: string, onChange: () =
     })
 }
 
-// git add and git rm change the file set through the git index alone
-function isIgnoredPath(repoRoot: string, gitIndexPath: string, filePath: string): boolean {
-    if (filePath === gitIndexPath || filePath === path.dirname(gitIndexPath)) return false
+// git add and git rm change the file set through the git index alone, and an amend or reset can move HEAD without it
+function isIgnoredPath(repoRoot: string, gitFiles: string[], filePath: string): boolean {
+    if (gitFiles.some((gitFile) => filePath === gitFile || filePath === path.dirname(gitFile))) return false
     const segments = path.relative(repoRoot, filePath).split(path.sep)
     return segments[0] === '..' || segments.some((segment) => ignoredSegments.has(segment))
 }

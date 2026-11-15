@@ -14,7 +14,7 @@ describe('watchRepo', () => {
     let calls: number
 
     async function startWatching(indexPath = gitIndexPath): Promise<void> {
-        watcher = await watchRepo(dir, indexPath, () => calls++)
+        watcher = await watchRepo(dir, [indexPath, path.join(path.dirname(indexPath), 'logs', 'HEAD')], () => calls++)
     }
 
     async function expectOneCall(): Promise<void> {
@@ -73,7 +73,17 @@ describe('watchRepo', () => {
         await expectOneCall()
     })
 
-    it('watches only the index of a git dir outside the repo, as in a worktree', async () => {
+    it('calls back when HEAD moves, even before the reflog exists', async () => {
+        await startWatching()
+        fs.mkdirSync(path.join(dir, '.git', 'logs'))
+        fs.writeFileSync(path.join(dir, '.git', 'logs', 'HEAD'), 'commit 1\n')
+        await expectOneCall()
+        calls = 0
+        fs.appendFileSync(path.join(dir, '.git', 'logs', 'HEAD'), 'commit 2\n')
+        await expectOneCall()
+    })
+
+    it('watches only the index and the HEAD reflog of a git dir outside the repo, as in a worktree', async () => {
         const gitDir = path.join(baseDir, 'main-git', 'worktrees', 'repo')
         fs.mkdirSync(gitDir, { recursive: true })
         fs.writeFileSync(path.join(gitDir, 'index'), 'index 1\n')

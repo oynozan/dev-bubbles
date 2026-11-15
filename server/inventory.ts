@@ -35,9 +35,9 @@ export async function findRepoRoot(dir: string): Promise<string> {
     }
 }
 
-// A worktree or submodule keeps its index outside the repo root
-export async function findGitIndexPath(repoRoot: string): Promise<string> {
-    const { stdout } = await execFileAsync('git', ['rev-parse', '--git-path', 'index'], { cwd: repoRoot })
+// A worktree or submodule keeps its git files outside the repo root
+export async function findGitPath(repoRoot: string, gitPath: string): Promise<string> {
+    const { stdout } = await execFileAsync('git', ['rev-parse', '--git-path', gitPath], { cwd: repoRoot })
     return path.resolve(repoRoot, stdout.trim())
 }
 
