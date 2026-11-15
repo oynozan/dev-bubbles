@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import micromatch from 'micromatch'
+import { buildTree, flattenTree } from '../server/components.ts'
 import { configDir, formatJson, readJsonFile } from '../server/json-file.ts'
 import { bugsFileSchema, manifestSchema } from '../shared/schema.ts'
 import type { Bug, ComponentDef, Mark } from '../shared/schema.ts'
@@ -53,11 +54,11 @@ if (manifestResult.status === 'invalid') fail(manifestResult.errors.join('\n'))
 const manifest = manifestResult.value
 
 const repoFiles = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { cwd: repoRoot, encoding: 'utf8' })
-    .split('\0').filter((file) => sourcePattern.test(file))
-const filesOf = (leaf: ComponentDef) => micromatch(repoFiles, leaf.include, {
-    dot: true,
-    ignore: [...(leaf.exclude ?? []), ...(manifest.ignore ?? [])],
-})
+    .split('\0').filter((file) => sourcePattern.test(file) && !micromatch.isMatch(file, manifest.ignore ?? [], { dot: true }))
+// Assigned the way the server does it, so each picked file sits inside the bubble its step names
+const tree = buildTree(path.basename(repoRoot), repoFiles.map((file) => ({ path: file, loc: 0 })), manifest)
+const nodesById = new Map(flattenTree(tree).map((node) => [node.id, node]))
+const filesOf = (leaf: ComponentDef) => nodesById.get(leaf.id)?.files?.map((file) => file.path) ?? []
 const suspects = leavesOf(manifest.components)
     .map((leaf) => ({ leaf, files: filesOf(leaf) }))
     .filter(({ files }) => files.length > 0)
