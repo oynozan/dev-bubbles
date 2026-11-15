@@ -14,8 +14,5 @@ export const Legend = ({ fileTypes }: LegendProps) => (
                 </text>
             </g>
         ))}
-        <g fill="#9CA3AF" style={{ fontWeight: 300, fontStyle: 'italic', fontSize: 12 }}>
-            each dot sized by file size
-        </g>
     </g>
 )
