@@ -29,6 +29,7 @@ import {
     fitTransform,
     forceContain,
     hasVisibleLabel,
+    indexFiles,
     indexLineages,
     indexNodes,
     packTree,
@@ -65,6 +66,7 @@ export const BubbleMap = ({ snapshot }: BubbleMapProps) => {
     const tree = useMemo(() => packTree(snapshot.root), [snapshot.root])
     const nodesById = useMemo(() => indexNodes(tree), [tree])
     const lineages = useMemo(() => indexLineages(tree), [tree])
+    const files = useMemo(() => indexFiles(tree), [tree])
     const edges = useMemo(() => aggregateEdges(snapshot.edges, lineages, openIds), [snapshot.edges, lineages, openIds])
     const selectedBug = snapshot.bugs.find((bug) => bug.id === selectedBugId)
     const marks = useMemo(() => markNodes(snapshot.bugs, selectedBug?.id), [snapshot.bugs, selectedBug?.id])
@@ -113,6 +115,7 @@ export const BubbleMap = ({ snapshot }: BubbleMapProps) => {
                     bugs={snapshot.bugs}
                     selectedBug={selectedBug}
                     nodesById={nodesById}
+                    files={files}
                     onSelectBug={selectBug}
                     onSelectMark={controller.zoomTo}
                 />

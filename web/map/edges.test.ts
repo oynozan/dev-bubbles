@@ -1,20 +1,26 @@
 import { describe, expect, it } from 'vitest'
-import { dirId, fileId, ROOT_ID, UNMAPPED_ID } from '../../shared/schema.ts'
+import { dirId, fileId, ownFilesId, ROOT_ID, UNMAPPED_ID } from '../../shared/schema.ts'
 import type { Edge, TreeNode } from '../../shared/schema.ts'
 import { aggregateEdges, describeHttpEdge, edgeCurve, edgeWidth, isEdgeOf } from './edges.ts'
 import type { VisibleEdge } from './edges.ts'
 import { indexLineages, packTree } from './layout.ts'
 import type { Circle } from './layout.ts'
 
-const file = (path: string): TreeNode => {
-    return { id: fileId(path), kind: 'file', label: path.split('/').at(-1) ?? path, path, loc: 30 }
+const fileRefs = (paths: string[]) => paths.map((path) => ({ path, loc: 30 }))
+
+const dirLeaf = (path: string, paths: string[]): TreeNode => {
+    return { id: dirId(path), kind: 'dir', label: path.split('/').at(-1) ?? path, path, files: fileRefs(paths) }
 }
 
 const dir = (path: string, children: TreeNode[]): TreeNode => {
     return { id: dirId(path), kind: 'dir', label: path.split('/').at(-1) ?? path, path, children }
 }
 
+const leaf = (id: string, paths: string[]): TreeNode => ({ id, kind: 'component', label: id, files: fileRefs(paths) })
+
 const component = (id: string, children: TreeNode[]): TreeNode => ({ id, kind: 'component', label: id, children })
+
+const ownApi = ownFilesId('api')
 
 const lineages = indexLineages(packTree({
     id: ROOT_ID,
@@ -22,15 +28,21 @@ const lineages = indexLineages(packTree({
     label: 'repo',
     path: '',
     children: [
-        component('web', [file('web/app.tsx'), file('web/client.ts')]),
-        component('api', [component('api.billing', [file('api/billing.ts'), file('api/invoice.ts')]), file('api/server.ts')]),
-        component(UNMAPPED_ID, [dir('src', [
-            dir('src/lib', [dir('src/lib/core', [file('src/lib/core/a.ts'), file('src/lib/core/b.ts')])]),
-            dir('src/util', [file('src/util/x.ts')]),
-            file('src/main.ts'),
-        ])]),
+        leaf('web', ['web/app.tsx', 'web/client.ts']),
+        component('api', [leaf('api.billing', ['api/billing.ts', 'api/invoice.ts']), leaf(ownApi, ['api/server.ts'])]),
+        leaf(UNMAPPED_ID, ['src/main.ts']),
     ],
 }))
+
+// Before the agent maps the repo, the bubbles are directories
+const dirLineages = indexLineages(packTree(dir('', [
+    dir('src', [
+        dir('src/lib', [dirLeaf('src/lib/core', ['src/lib/core/a.ts', 'src/lib/core/b.ts'])]),
+        dirLeaf('src/util', ['src/util/x.ts']),
+        { ...dirLeaf('src', ['src/main.ts']), id: ownFilesId(dirId('src')) },
+    ]),
+    dirLeaf('docs', ['docs/guide.md']),
+])))
 
 const importEdge = (from: string, to: string): Edge => ({ from: fileId(from), to: fileId(to), kind: 'import' })
 
@@ -51,30 +63,24 @@ describe('aggregateEdges', () => {
 
     it('moves both ends up to the deepest bubble drawn at the current zoom', () => {
         expect(ends(aggregateEdges([appToServer], lineages, open()))).toEqual([['import', 'web', 'api']])
-        expect(ends(aggregateEdges([appToServer], lineages, open('web', 'api')))).toEqual([
-            ['import', fileId('web/app.tsx'), fileId('api/server.ts')],
-        ])
+        expect(ends(aggregateEdges([appToServer], lineages, open('api')))).toEqual([['import', 'web', ownApi]])
     })
 
     it('aggregates again as a group opens and closes', () => {
         const toBilling = importEdge('web/client.ts', 'api/billing.ts')
 
         expect(ends(aggregateEdges([toBilling], lineages, open('api')))).toEqual([['import', 'web', 'api.billing']])
-        expect(ends(aggregateEdges([toBilling], lineages, open('api', 'api.billing')))).toEqual([
-            ['import', 'web', fileId('api/billing.ts')],
-        ])
         expect(ends(aggregateEdges([toBilling], lineages, open()))).toEqual([['import', 'web', 'api']])
     })
 
     it('drops edges whose ends meet in one drawn bubble or nest inside each other', () => {
         const insideWeb = importEdge('web/app.tsx', 'web/client.ts')
+        const insideApi = importEdge('api/billing.ts', 'api/server.ts')
         const toOwnChild = httpEdge('api', 'api.billing')
 
-        expect(aggregateEdges([insideWeb, toOwnChild], lineages, open())).toEqual([])
-        expect(aggregateEdges([toOwnChild], lineages, open('api'))).toEqual([])
-        expect(ends(aggregateEdges([insideWeb], lineages, open('web')))).toEqual([
-            ['import', fileId('web/app.tsx'), fileId('web/client.ts')],
-        ])
+        expect(aggregateEdges([insideWeb, insideApi, toOwnChild], lineages, open())).toEqual([])
+        expect(aggregateEdges([insideWeb, toOwnChild], lineages, open('api'))).toEqual([])
+        expect(ends(aggregateEdges([insideApi], lineages, open('api')))).toEqual([['import', 'api.billing', ownApi]])
     })
 
     it('merges duplicates with a count and keeps kinds and directions apart', () => {
@@ -96,12 +102,12 @@ describe('aggregateEdges', () => {
 
     it('ends on the ids of collapsed directory chains', () => {
         const coreToUtil = importEdge('src/lib/core/a.ts', 'src/util/x.ts')
+        const coreToDocs = importEdge('src/lib/core/b.ts', 'docs/guide.md')
 
-        expect(ends(aggregateEdges([coreToUtil], lineages, open(UNMAPPED_ID, dirId('src'))))).toEqual([
-            ['import', dirId('src/lib/core'), fileId('src/util/x.ts')],
-        ])
-        expect(ends(aggregateEdges([coreToUtil], lineages, open(UNMAPPED_ID, dirId('src'), dirId('src/lib/core'))))).toEqual([
-            ['import', fileId('src/lib/core/a.ts'), fileId('src/util/x.ts')],
+        expect(ends(aggregateEdges([coreToUtil, coreToDocs], dirLineages, open()))).toEqual([['import', dirId('src'), dirId('docs')]])
+        expect(ends(aggregateEdges([coreToUtil, coreToDocs], dirLineages, open(dirId('src'))))).toEqual([
+            ['import', dirId('src/lib/core'), dirId('src/util')],
+            ['import', dirId('src/lib/core'), dirId('docs')],
         ])
     })
 
@@ -109,8 +115,7 @@ describe('aggregateEdges', () => {
         const manual = httpEdge('web', 'api.billing', 'calls BILLING_URL')
 
         expect(ends(aggregateEdges([manual], lineages, open()))).toEqual([['http', 'web', 'api']])
-        expect(ends(aggregateEdges([manual], lineages, open('web', 'api')))).toEqual([['http', 'web', 'api.billing']])
-        expect(aggregateEdges([manual], lineages, open('web', 'api', 'api.billing'))).toMatchObject([
+        expect(aggregateEdges([manual], lineages, open('api'))).toMatchObject([
             { from: 'web', to: 'api.billing', labels: ['calls BILLING_URL'] },
         ])
     })
@@ -122,13 +127,13 @@ describe('aggregateEdges', () => {
 
 describe('isEdgeOf', () => {
     it('picks edges that end on a bubble or inside it', () => {
-        const edge = visibleEdge(fileId('web/app.tsx'), 'api.billing')
+        const edge = visibleEdge('web', 'api.billing')
 
         expect(isEdgeOf(edge, 'web', lineages)).toBe(true)
         expect(isEdgeOf(edge, 'api', lineages)).toBe(true)
         expect(isEdgeOf(edge, 'api.billing', lineages)).toBe(true)
-        expect(isEdgeOf(edge, fileId('web/client.ts'), lineages)).toBe(false)
-        expect(isEdgeOf(edge, fileId('api/billing.ts'), lineages)).toBe(false)
+        expect(isEdgeOf(edge, ownApi, lineages)).toBe(false)
+        expect(isEdgeOf(edge, UNMAPPED_ID, lineages)).toBe(false)
     })
 })
 

@@ -1,15 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { fileId, ROOT_ID } from '../../shared/schema.ts'
+import { fileId, ownFilesId, ROOT_ID } from '../../shared/schema.ts'
 import type { MarkState, SnapshotBug, TreeNode } from '../../shared/schema.ts'
 import { absoluteCircle, indexLineages, packTree, syncBubbles } from './layout.ts'
 import type { BubbleState, Circle } from './layout.ts'
 import { fitMarks, markNodes, rollUpHiddenMarks } from './marks.ts'
 
-const file = (path: string): TreeNode => {
-    return { id: fileId(path), kind: 'file', label: path.split('/').at(-1) ?? path, path, loc: 30 }
+const leaf = (id: string, paths: string[]): TreeNode => {
+    return { id, kind: 'component', label: id, files: paths.map((path) => ({ path, loc: 30 })) }
 }
 
 const component = (id: string, children: TreeNode[]): TreeNode => ({ id, kind: 'component', label: id, children })
+
+const ownApi = ownFilesId('api')
 
 const tree = packTree({
     id: ROOT_ID,
@@ -17,8 +19,8 @@ const tree = packTree({
     label: 'repo',
     path: '',
     children: [
-        component('web', [file('web/app.tsx'), file('web/client.ts')]),
-        component('api', [component('api.billing', [file('api/billing.ts'), file('api/invoice.ts')]), file('api/server.ts')]),
+        leaf('web', ['web/app.tsx', 'web/client.ts']),
+        component('api', [leaf('api.billing', ['api/billing.ts', 'api/invoice.ts']), leaf(ownApi, ['api/server.ts'])]),
     ],
 })
 
@@ -87,11 +89,18 @@ describe('rollUpHiddenMarks', () => {
         ]))
     })
 
-    it('leaves out marks drawn on their own bubble', () => {
-        const groupMark = markNodes([bug('b1', [['api.billing', 'suspected']])], undefined)
+    it('rolls file marks up to the leaf that holds them', () => {
+        const serverMark = markNodes([bug('b1', [[server, 'confirmed']])], undefined)
 
-        expect(rollUpHiddenMarks(marks, lineages, open('web', 'api', 'api.billing')).size).toBe(0)
-        expect(rollUpHiddenMarks(groupMark, lineages, open('api')).size).toBe(0)
+        expect(rollUpHiddenMarks(serverMark, lineages, open('api'))).toEqual(new Map([
+            [ownApi, { state: 'confirmed', isDimmed: false, count: 1 }],
+        ]))
+    })
+
+    it('leaves out marks drawn on their own bubble', () => {
+        const leafMark = markNodes([bug('b1', [['api.billing', 'suspected']])], undefined)
+
+        expect(rollUpHiddenMarks(leafMark, lineages, open('api')).size).toBe(0)
     })
 
     it('counts the selected bug ahead of the dimmed ones', () => {
@@ -115,8 +124,8 @@ describe('fitMarks', () => {
 
     it('fits the smallest circle around every mark and focuses their deepest shared ancestor', () => {
         const fit = fitMarks([app, billing], bubbles, lineages)
-        const from = absoluteCircle(bubbles, app)
-        const to = absoluteCircle(bubbles, billing)
+        const from = absoluteCircle(bubbles, 'web')
+        const to = absoluteCircle(bubbles, 'api.billing')
 
         expect(fit?.focusId).toBe(ROOT_ID)
         expect(fit && encloses(fit.circle, from) && encloses(fit.circle, to)).toBe(true)
@@ -131,8 +140,12 @@ describe('fitMarks', () => {
         })
     })
 
+    it('fits a file mark to the leaf that holds it', () => {
+        expect(fitMarks([server], bubbles, lineages)).toEqual({ circle: absoluteCircle(bubbles, ownApi), focusId: ownApi })
+    })
+
     it('skips marks on nodes it does not know', () => {
         expect(fitMarks(['gone'], bubbles, lineages)).toBeUndefined()
-        expect(fitMarks(['gone', server], bubbles, lineages)?.focusId).toBe(server)
+        expect(fitMarks(['gone', server], bubbles, lineages)?.focusId).toBe(ownApi)
     })
 })

@@ -4,6 +4,10 @@ export const truncateString = (text: string, maxLength: number): string => {
     return text.length > maxLength ? `${text.slice(0, Math.max(0, maxLength - 1))}…` : text
 }
 
+export const countOf = (count: number, noun: string): string => {
+    return `${count.toLocaleString('en')} ${count === 1 ? noun : `${noun}s`}`
+}
+
 export const keepBetween = (min: number, max: number, value: number): number => {
     return Math.max(min, Math.min(max, value))
 }

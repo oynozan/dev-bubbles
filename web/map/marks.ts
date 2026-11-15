@@ -65,11 +65,12 @@ export const fitMarks = (
     lineages: Lineages,
 ): MarkFit | undefined => {
     const positions = new Map<string, Point>()
-    const knownIds = ids.filter((id) => bubbles.has(id) && lineages.has(id))
-    const circles = knownIds.map((id) => absoluteCircle(bubbles, id, positions))
+    // A file has no bubble of its own, so its mark fits the leaf that holds it
+    const bubbleIds = ids.flatMap((id) => lineages.get(id)?.findLast((lineageId) => bubbles.has(lineageId)) ?? [])
+    const circles = bubbleIds.map((id) => absoluteCircle(bubbles, id, positions))
     if (!circles.length) return undefined
     const { x, y, r } = packEnclose(circles)
-    return { circle: { x, y, r }, focusId: findCommonAncestor(knownIds, lineages) }
+    return { circle: { x, y, r }, focusId: findCommonAncestor(bubbleIds, lineages) }
 }
 
 const findCommonAncestor = (ids: readonly string[], lineages: Lineages): string => {

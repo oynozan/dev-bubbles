@@ -1,7 +1,7 @@
 import { memo, useCallback } from 'react'
 import type { CSSProperties, MouseEvent, ReactElement } from 'react'
 import { CircleText } from './CircleText.tsx'
-import { bubbleFill, fitLabel, hasVisibleLabel } from './layout.ts'
+import { bubbleFill, bubbleName, describeSize, fitLabel, hasVisibleLabel } from './layout.ts'
 import type { LayoutNode } from './layout.ts'
 import type { HiddenMarks, NodeMark } from './marks.ts'
 import { mapStripesId, MarkCircle } from './patterns.tsx'
@@ -36,7 +36,7 @@ const badgeDigitWidth = 6.5
 const maxBadgeCount = 99
 
 const BubbleNode = ({ node, openIds, marks, hiddenMarks, actions }: BubbleProps): ReactElement => {
-    const { id, kind, r } = node
+    const { id, r } = node
     const isOpen = openIds.has(id)
     const mark = marks.get(id)
     const hidden = hiddenMarks.get(id)
@@ -58,7 +58,7 @@ const BubbleNode = ({ node, openIds, marks, hiddenMarks, actions }: BubbleProps)
     return (
         <g ref={register} className="bubble" data-id={id} onClick={zoomOnClick} onDoubleClick={unpinOnDoubleClick}>
             <title>{tooltipOf(node)}</title>
-            <circle r={r} fill={bubbleFill(node)} className={kind === 'file' ? undefined : 'group'} />
+            <circle r={r} fill={bubbleFill(node)} />
             {mark && <MarkCircle r={r} state={mark.state} isDimmed={mark.isDimmed} stripesId={mapStripesId} />}
             {isOpen && node.children?.map((child) => (
                 <Bubble
@@ -78,10 +78,7 @@ const BubbleNode = ({ node, openIds, marks, hiddenMarks, actions }: BubbleProps)
 
 export const Bubble = memo(BubbleNode)
 
-const tooltipOf = ({ label, path, loc }: LayoutNode): string => {
-    const lineCount = loc === undefined ? '' : `${loc} ${loc === 1 ? 'line' : 'lines'}`
-    return [path || label, lineCount].filter(Boolean).join('\n')
-}
+const tooltipOf = (node: LayoutNode): string => `${bubbleName(node)}\n${describeSize(node)}`
 
 // The stylesheet raises the fitted size to a readable minimum on screen
 const CurvedLabel = ({ node }: LabelProps) => {

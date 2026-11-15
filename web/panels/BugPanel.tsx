@@ -1,17 +1,19 @@
 import { useEffect, useState } from 'react'
 import type { MarkState, SnapshotBug, SnapshotMark } from '../../shared/schema.ts'
-import type { LayoutNode } from '../map/layout.ts'
+import { bubbleName } from '../map/layout.ts'
+import type { FileEntry, LayoutNode } from '../map/layout.ts'
 import { MarkSymbol } from '../map/patterns.tsx'
 
 type BugPanelProps = {
     bugs: SnapshotBug[]
     selectedBug: SnapshotBug | undefined
     nodesById: ReadonlyMap<string, LayoutNode>
+    files: ReadonlyMap<string, FileEntry>
     onSelectBug: (bug: SnapshotBug | undefined) => void
     onSelectMark: (nodeId: string) => void
 }
 
-type MarkListProps = Pick<BugPanelProps, 'nodesById' | 'onSelectMark'> & {
+type MarkListProps = Pick<BugPanelProps, 'nodesById' | 'files' | 'onSelectMark'> & {
     marks: SnapshotMark[]
 }
 
@@ -20,7 +22,7 @@ const ageUnits: [Intl.RelativeTimeFormatUnit, number][] = [['day', 86400], ['hou
 const ageFormat = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
 const ageRefreshMs = 60_000
 
-export const BugPanel = ({ bugs, selectedBug, nodesById, onSelectBug, onSelectMark }: BugPanelProps) => {
+export const BugPanel = ({ bugs, selectedBug, nodesById, files, onSelectBug, onSelectMark }: BugPanelProps) => {
     const now = useNow(ageRefreshMs)
 
     useEffect(() => {
@@ -55,7 +57,9 @@ export const BugPanel = ({ bugs, selectedBug, nodesById, onSelectBug, onSelectMa
                                     {bug.updatedAt && ` · updated ${formatAge(bug.updatedAt, now)}`}
                                 </span>
                             </button>
-                            {isSelected && <MarkList marks={bug.marks} nodesById={nodesById} onSelectMark={onSelectMark} />}
+                            {isSelected && (
+                                <MarkList marks={bug.marks} nodesById={nodesById} files={files} onSelectMark={onSelectMark} />
+                            )}
                         </li>
                     )
                 })}
@@ -64,7 +68,7 @@ export const BugPanel = ({ bugs, selectedBug, nodesById, onSelectBug, onSelectMa
     )
 }
 
-const MarkList = ({ marks, nodesById, onSelectMark }: MarkListProps) => {
+const MarkList = ({ marks, nodesById, files, onSelectMark }: MarkListProps) => {
     if (!marks.length) return <p className="bug-marks-empty">No marks yet</p>
 
     return (
@@ -75,7 +79,7 @@ const MarkList = ({ marks, nodesById, onSelectMark }: MarkListProps) => {
                         <svg className="mark-symbol" viewBox="0 0 12 12" aria-hidden="true">
                             <MarkSymbol state={mark.state} cx={6} cy={6} r={5.5} />
                         </svg>
-                        <span className="mark-name">{nameOf(mark.nodeId, nodesById)}</span>
+                        <span className="mark-name">{nameOf(mark.nodeId, nodesById, files)}</span>
                         <span className="mark-state">{mark.state}</span>
                         {mark.reason && <span className="mark-reason">{mark.reason}</span>}
                     </button>
@@ -86,10 +90,9 @@ const MarkList = ({ marks, nodesById, onSelectMark }: MarkListProps) => {
 }
 
 // A component goes by the name the agent gave it and a file by its path
-const nameOf = (id: string, nodesById: ReadonlyMap<string, LayoutNode>): string => {
+const nameOf = (id: string, nodesById: ReadonlyMap<string, LayoutNode>, files: ReadonlyMap<string, FileEntry>): string => {
     const node = nodesById.get(id)
-    if (!node) return id
-    return node.kind === 'file' ? node.path ?? node.label : node.label
+    return node ? bubbleName(node) : files.get(id)?.path ?? id
 }
 
 const countMarks = (marks: readonly SnapshotMark[]): string => {

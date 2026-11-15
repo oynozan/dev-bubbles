@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { dirId, fileId, ROOT_ID } from '../../shared/schema.ts'
-import type { Pin, TreeNode } from '../../shared/schema.ts'
+import { dirId, fileId, ownFilesId, ROOT_ID } from '../../shared/schema.ts'
+import type { FileRef, Pin, TreeNode } from '../../shared/schema.ts'
 import type { Point } from '../lib/utils.ts'
 import {
     absolutePosition,
     findOpenIds,
     fitLabel,
     forceContain,
+    indexFiles,
+    indexLineages,
     indexNodes,
     openRadius,
     packTree,
@@ -16,30 +18,40 @@ import type { BubbleState, LayoutNode, View } from './layout.ts'
 
 const nameOf = (path: string): string => path.split('/').at(-1) ?? path
 
-const file = (path: string, loc: number): TreeNode => {
-    return { id: fileId(path), kind: 'file', label: nameOf(path), path, loc }
+const files = (folder: string, count: number): FileRef[] => {
+    return Array.from({ length: count }, (_, index) => ({ path: `${folder}/file${index}.ts`, loc: 20 + index * 35 }))
+}
+
+const leaf = (path: string, fileRefs: FileRef[]): TreeNode => {
+    return { id: dirId(path), kind: 'dir', label: nameOf(path), path, files: fileRefs }
+}
+
+const ownFiles = (path: string, fileRefs: FileRef[]): TreeNode => {
+    return { ...leaf(path, fileRefs), id: ownFilesId(dirId(path)) }
 }
 
 const dir = (path: string, children: TreeNode[]): TreeNode => {
     return { id: dirId(path), kind: 'dir', label: path ? nameOf(path) : 'repo', path, children }
 }
 
-const files = (folder: string, count: number): TreeNode[] => {
-    return Array.from({ length: count }, (_, index) => file(`${folder}/file${index}.ts`, 20 + index * 35))
-}
-
-const sampleTree = (extraApiFiles = 0): TreeNode => dir('', [
-    file('README.md', 40),
+const sampleTree = (...extraSrc: TreeNode[]): TreeNode => dir('', [
+    ownFiles('', [{ path: 'README.md', loc: 40 }]),
     dir('src', [
-        dir('src/api', files('src/api', 4 + extraApiFiles)),
-        dir('src/lib', [dir('src/lib/core', files('src/lib/core', 3))]),
-        ...files('src', 2),
+        leaf('src/api', files('src/api', 4)),
+        dir('src/lib', [leaf('src/lib/core', files('src/lib/core', 3))]),
+        ownFiles('src', files('src', 2)),
+        ...extraSrc,
     ]),
-    dir('web', files('web', 5)),
+    leaf('web', files('web', 5)),
 ])
 
-const utilTree = (...names: string[]): LayoutNode => packTree(dir('', [
-    dir('src', [dir('src/util', names.map((name) => file(`src/util/${name}`, 40))), ...files('src', 2)]),
+const cliLeaf = leaf('src/cli', files('src/cli', 2))
+
+const libTree = (...names: string[]): LayoutNode => packTree(dir('', [
+    dir('src', [
+        dir('src/lib', names.map((name) => leaf(`src/lib/${name}`, files(`src/lib/${name}`, 2)))),
+        ownFiles('src', files('src', 2)),
+    ]),
 ]))
 
 const syncedBubbles = (tree: LayoutNode): Map<string, BubbleState> => {
@@ -49,7 +61,7 @@ const syncedBubbles = (tree: LayoutNode): Map<string, BubbleState> => {
 }
 
 const bubbleAt = (x: number, y: number, r: number, isGroup = false): BubbleState => {
-    return { id: 'file:a.ts', pinId: 'file:a.ts', parentId: ROOT_ID, r, isGroup, x, y }
+    return { id: 'dir:a', pinId: 'dir:a', parentId: ROOT_ID, r, isGroup, x, y }
 }
 
 const distanceFromCentre = ({ x, y }: { x: number, y: number }): number => Math.hypot(x, y)
@@ -71,22 +83,69 @@ describe('packTree', () => {
 
     it('collapses single-child directory chains but never components', () => {
         const nodes = indexNodes(packTree(dir('', [
-            dir('src', [dir('src/lib', [dir('src/lib/core', files('src/lib/core', 2))]), file('src/main.ts', 9)]),
-            { id: 'auth', kind: 'component', label: 'Auth', children: [file('src/auth/session.ts', 30)] },
+            dir('src', [dir('src/lib', [leaf('src/lib/core', files('src/lib/core', 2))]), ownFiles('src', files('src', 1))]),
+            {
+                id: 'auth',
+                kind: 'component',
+                label: 'Auth',
+                children: [{ id: 'auth.session', kind: 'component', label: 'Session', files: files('src/auth', 1) }],
+            },
         ])))
 
         expect(nodes.get(dirId('src/lib/core'))).toMatchObject({ label: 'lib/core', pinId: dirId('src/lib') })
         expect(nodes.has(dirId('src/lib'))).toBe(false)
-        expect(nodes.get('auth')?.children?.map((child) => child.id)).toEqual([fileId('src/auth/session.ts')])
+        expect(nodes.get('auth')?.children?.map((child) => child.id)).toEqual(['auth.session'])
     })
 
-    it('sizes files by lines with a minimum of one', () => {
-        const nodes = indexNodes(packTree(dir('', [file('empty.ts', 0), file('one.ts', 1), file('big.ts', 100)])))
-        const radiusOf = (path: string) => nodes.get(fileId(path))?.r ?? 0
+    it('sizes a leaf by the lines of its files, each counting at least one', () => {
+        const nodes = indexNodes(packTree(dir('', [
+            leaf('empty', [{ path: 'empty/a.ts', loc: 0 }]),
+            leaf('one', [{ path: 'one/a.ts', loc: 1 }]),
+            leaf('big', [{ path: 'big/a.ts', loc: 100 }]),
+            leaf('split', [{ path: 'split/a.ts', loc: 60 }, { path: 'split/b.ts', loc: 40 }]),
+            leaf('blank', [{ path: 'blank/a.ts', loc: 0 }, { path: 'blank/b.ts', loc: 0 }]),
+        ])))
+        const radiusOf = (path: string) => nodes.get(dirId(path))?.r ?? 0
 
-        expect(radiusOf('empty.ts')).toBeGreaterThan(0)
-        expect(radiusOf('empty.ts')).toBeCloseTo(radiusOf('one.ts'))
-        expect(radiusOf('big.ts')).toBeCloseTo(radiusOf('one.ts') * 10)
+        expect(radiusOf('empty')).toBeGreaterThan(0)
+        expect(radiusOf('empty')).toBeCloseTo(radiusOf('one'))
+        expect(radiusOf('big')).toBeCloseTo(radiusOf('one') * 10)
+        expect(radiusOf('split')).toBeCloseTo(radiusOf('big'))
+        expect(radiusOf('blank')).toBeCloseTo(radiusOf('one') * Math.SQRT2)
+    })
+
+    it('totals the files and lines under every node', () => {
+        const nodes = indexNodes(packTree(sampleTree()))
+
+        expect(nodes.get(dirId('src/api'))).toMatchObject({ fileCount: 4, loc: 20 + 55 + 90 + 125 })
+        expect(nodes.get(dirId('src'))).toMatchObject({ fileCount: 9, loc: 290 + 20 + 55 + 90 + 20 + 55 })
+        expect(nodes.get(ROOT_ID)?.fileCount).toBe(15)
+    })
+})
+
+describe('indexLineages', () => {
+    it('indexes every file under the leaf that holds it', () => {
+        const lineages = indexLineages(packTree(sampleTree()))
+
+        expect(lineages.get(dirId('src/lib/core'))).toEqual([ROOT_ID, dirId('src'), dirId('src/lib/core')])
+        expect(lineages.get(fileId('src/lib/core/file1.ts'))).toEqual([
+            ROOT_ID,
+            dirId('src'),
+            dirId('src/lib/core'),
+            fileId('src/lib/core/file1.ts'),
+        ])
+        expect(lineages.get(fileId('README.md'))).toEqual([ROOT_ID, ownFilesId(ROOT_ID), fileId('README.md')])
+    })
+})
+
+describe('indexFiles', () => {
+    it('finds the path, lines and leaf of every file', () => {
+        const tree = packTree(sampleTree())
+        const entries = indexFiles(tree)
+
+        expect(entries.size).toBe(15)
+        expect(entries.get(fileId('src/file1.ts'))).toMatchObject({ path: 'src/file1.ts', loc: 55 })
+        expect(entries.get(fileId('src/file1.ts'))?.leaf).toBe(indexNodes(tree).get(ownFilesId(dirId('src'))))
     })
 })
 
@@ -107,21 +166,36 @@ describe('syncBubbles', () => {
         web.x = 123
         web.y = -45
 
-        const grown = packTree(sampleTree(1))
+        const grown = packTree(sampleTree(cliLeaf))
         const changedGroups = syncBubbles(bubbles, grown, {})
-        const newFile = bubbles.get(fileId('src/api/file4.ts'))!
-        const apiRadius = indexNodes(grown).get(dirId('src/api'))!.r
+        const srcRadius = indexNodes(grown).get(dirId('src'))!.r
 
         expect(bubbles.get(dirId('web'))).toMatchObject({ x: 123, y: -45 })
-        expect(distanceFromCentre(newFile)).toBeLessThan(apiRadius * 0.2)
-        expect(changedGroups).toEqual(new Set([dirId('src/api'), dirId('src'), ROOT_ID]))
+        expect(distanceFromCentre(bubbles.get(dirId('src/cli'))!)).toBeLessThan(srcRadius * 0.2)
+        expect(changedGroups.has(dirId('src'))).toBe(true)
+    })
+
+    it('reheats the group around a leaf whose files grew', () => {
+        const bubbles = syncedBubbles(packTree(sampleTree()))
+        const [rootFiles, src] = sampleTree().children ?? []
+        const grown = packTree(dir('', [rootFiles, src, leaf('web', files('web', 6))]))
+
+        expect(syncBubbles(bubbles, grown, {})).toEqual(new Set([ROOT_ID]))
     })
 
     it('gives a group with no surviving members its packed layout', () => {
         const bubbles = syncedBubbles(packTree(sampleTree()))
         const regrouped = packTree(dir('', [
             ...sampleTree().children ?? [],
-            { id: 'docs', kind: 'component', label: 'Docs', children: files('docs', 3) },
+            {
+                id: 'docs',
+                kind: 'component',
+                label: 'Docs',
+                children: [
+                    { id: 'docs.guides', kind: 'component', label: 'Guides', files: files('docs/guides', 3) },
+                    { id: 'docs.api', kind: 'component', label: 'API', files: files('docs/api', 2) },
+                ],
+            },
         ]))
         const changedGroups = syncBubbles(bubbles, regrouped, {})
         const docs = indexNodes(regrouped).get('docs')!
@@ -134,11 +208,11 @@ describe('syncBubbles', () => {
     })
 
     it('drops nodes that left the tree and reheats their group', () => {
-        const bubbles = syncedBubbles(packTree(sampleTree(1)))
+        const bubbles = syncedBubbles(packTree(sampleTree(cliLeaf)))
         const changedGroups = syncBubbles(bubbles, packTree(sampleTree()), {})
 
-        expect(bubbles.has(fileId('src/api/file4.ts'))).toBe(false)
-        expect(changedGroups.has(dirId('src/api'))).toBe(true)
+        expect(bubbles.has(dirId('src/cli'))).toBe(false)
+        expect(changedGroups.has(dirId('src'))).toBe(true)
         expect(changedGroups.has(dirId('web'))).toBe(false)
     })
 
@@ -170,36 +244,36 @@ describe('syncBubbles', () => {
     })
 
     it('keeps the spot of a directory chain that expands or collapses', () => {
-        const bubbles = syncedBubbles(utilTree('x.ts'))
-        Object.assign(bubbles.get(fileId('src/util/x.ts'))!, { x: 30, y: 5 })
+        const bubbles = syncedBubbles(libTree('core'))
+        Object.assign(bubbles.get(dirId('src/lib/core'))!, { x: 30, y: 5 })
 
-        syncBubbles(bubbles, utilTree('x.ts', 'y.ts'), {})
-        expect(bubbles.get(dirId('src/util'))).toMatchObject({ parentId: dirId('src'), x: 30, y: 5 })
-        Object.assign(bubbles.get(dirId('src/util'))!, { x: -20, y: 10 })
+        syncBubbles(bubbles, libTree('core', 'extra'), {})
+        expect(bubbles.get(dirId('src/lib'))).toMatchObject({ parentId: dirId('src'), x: 30, y: 5 })
+        Object.assign(bubbles.get(dirId('src/lib'))!, { x: -20, y: 10 })
 
-        syncBubbles(bubbles, utilTree('x.ts'), {})
-        expect(bubbles.get(fileId('src/util/x.ts'))).toMatchObject({ parentId: dirId('src'), x: -20, y: 10 })
+        syncBubbles(bubbles, libTree('core'), {})
+        expect(bubbles.get(dirId('src/lib/core'))).toMatchObject({ parentId: dirId('src'), x: -20, y: 10 })
     })
 
     it('keys the pin of a collapsed chain by its outermost directory', () => {
-        const pins: Record<string, Pin> = { [dirId('src/util')]: [12, -8] }
+        const pins: Record<string, Pin> = { [dirId('src/lib')]: [12, -8] }
         const bubbles = new Map<string, BubbleState>()
 
-        syncBubbles(bubbles, utilTree('x.ts'), pins)
-        expect(bubbles.get(fileId('src/util/x.ts'))).toMatchObject({ pinId: dirId('src/util'), fx: 12, fy: -8 })
+        syncBubbles(bubbles, libTree('core'), pins)
+        expect(bubbles.get(dirId('src/lib/core'))).toMatchObject({ pinId: dirId('src/lib'), fx: 12, fy: -8 })
 
-        syncBubbles(bubbles, utilTree('x.ts', 'y.ts'), pins)
-        expect(bubbles.get(dirId('src/util'))).toMatchObject({ parentId: dirId('src'), fx: 12, fy: -8 })
-        const inner = bubbles.get(fileId('src/util/x.ts'))
-        expect(inner).toMatchObject({ pinId: fileId('src/util/x.ts'), parentId: dirId('src/util') })
+        syncBubbles(bubbles, libTree('core', 'extra'), pins)
+        expect(bubbles.get(dirId('src/lib'))).toMatchObject({ parentId: dirId('src'), fx: 12, fy: -8 })
+        const inner = bubbles.get(dirId('src/lib/core'))
+        expect(inner).toMatchObject({ pinId: dirId('src/lib/core'), parentId: dirId('src/lib') })
         expect(inner?.fx ?? null).toBeNull()
     })
 
     it('applies pins to nodes that are new on load', () => {
         const bubbles = new Map<string, BubbleState>()
-        syncBubbles(bubbles, packTree(sampleTree()), { [fileId('web/file0.ts')]: [-3, 4] })
+        syncBubbles(bubbles, packTree(sampleTree()), { [dirId('web')]: [-3, 4] })
 
-        expect(bubbles.get(fileId('web/file0.ts'))).toMatchObject({ x: -3, y: 4, fx: -3, fy: 4 })
+        expect(bubbles.get(dirId('web'))).toMatchObject({ x: -3, y: 4, fx: -3, fy: 4 })
     })
 })
 
@@ -208,11 +282,11 @@ describe('absolutePosition', () => {
         const bubbles = new Map<string, BubbleState>([
             [ROOT_ID, { ...bubbleAt(0, 0, 100), id: ROOT_ID, parentId: '' }],
             [dirId('a'), { ...bubbleAt(10, 5, 30), id: dirId('a'), parentId: ROOT_ID }],
-            [fileId('a/b.ts'), { ...bubbleAt(-3, 4, 5), id: fileId('a/b.ts'), parentId: dirId('a') }],
+            [dirId('a/b'), { ...bubbleAt(-3, 4, 5), id: dirId('a/b'), parentId: dirId('a') }],
         ])
         const cache = new Map<string, Point>()
 
-        expect(absolutePosition(bubbles, fileId('a/b.ts'), cache)).toEqual([7, 9])
+        expect(absolutePosition(bubbles, dirId('a/b'), cache)).toEqual([7, 9])
         expect(cache.get(dirId('a'))).toEqual([10, 5])
     })
 })
@@ -250,11 +324,11 @@ describe('forceContain', () => {
 })
 
 describe('findOpenIds', () => {
-    const group = (id: string, r: number, children: LayoutNode[]): LayoutNode => {
-        return { id, pinId: id, kind: 'dir', label: id, depth: 0, r, x: 0, y: 0, children }
+    const node = (id: string, r: number): LayoutNode => {
+        return { id, pinId: id, kind: 'dir', label: id, fileCount: 1, loc: 1, depth: 0, r, x: 0, y: 0 }
     }
-    const leaf = (id: string, r: number): LayoutNode => ({ id, pinId: id, kind: 'file', label: id, depth: 0, r, x: 0, y: 0 })
-    const root = group(ROOT_ID, 100, [group('dir:a', 30, [group('dir:a/b', 10, [leaf('file:a/b/c.ts', 2)])])])
+    const group = (id: string, r: number, children: LayoutNode[]): LayoutNode => ({ ...node(id, r), children })
+    const root = group(ROOT_ID, 100, [group('dir:a', 30, [group('dir:a/b', 10, [node('dir:a/b/c', 2)])])])
     const positions = new Map([[ROOT_ID, { x: 0, y: 0 }], ['dir:a', { x: 0, y: 0 }], ['dir:a/b', { x: 0, y: 0 }]])
     const viewAtScale = (k: number): View => ({ k, x: 500, y: 500, width: 1000, height: 1000 })
 

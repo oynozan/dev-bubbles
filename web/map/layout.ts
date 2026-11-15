@@ -1,15 +1,17 @@
 /*
  * Pure layout logic for the bubble map.
- * packTree sizes the snapshot tree with d3.pack and turns it into parent-local positions.
+ * packTree sizes the snapshot tree with d3.pack, each leaf by the lines of its files, and turns
+ * it into parent-local positions.
  * syncBubbles keeps one mutable BubbleState per node across snapshots, which the force
  * simulations move and the DOM reads. forceContain keeps a sibling group inside its parent,
- * findOpenIds decides which groups semantic zoom opens, and findVisibleId walks a node's
- * lineage to the bubble it is drawn as.
+ * findOpenIds decides which groups semantic zoom opens, and findVisibleId walks the lineage of
+ * a node or file to the bubble it is drawn as.
  */
-import { hierarchy, pack } from 'd3'
+import { hierarchy, pack, sum } from 'd3'
 import type { Force, HierarchyCircularNode, SimulationNodeDatum } from 'd3'
-import type { NodeKind, Pin, TreeNode } from '../../shared/schema.ts'
-import { keepBetween, keepCircleInsideCircle, truncateString } from '../lib/utils.ts'
+import { fileId } from '../../shared/schema.ts'
+import type { FileRef, NodeKind, Pin, TreeNode } from '../../shared/schema.ts'
+import { countOf, keepBetween, keepCircleInsideCircle, truncateString } from '../lib/utils.ts'
 import type { Point } from '../lib/utils.ts'
 
 export type LayoutNode = {
@@ -19,7 +21,10 @@ export type LayoutNode = {
     kind: NodeKind
     label: string
     path?: string
-    loc?: number
+    files?: FileRef[]
+    // Totals over every file under the node
+    fileCount: number
+    loc: number
     depth: number
     r: number
     x: number
@@ -58,6 +63,10 @@ export type Circle = {
     r: number
 }
 
+export type FileEntry = FileRef & {
+    leaf: LayoutNode
+}
+
 export type FittedLabel = {
     text: string
     fontSize: number
@@ -77,13 +86,12 @@ const fitShare = 0.9
 const glyphWidth = 0.6
 const rootLightness = 14
 const depthLightnessStep = 3
-const fileLightnessLift = 5
 
 /* Packing */
 
 export const packTree = (tree: TreeNode): LayoutNode => {
     const root = hierarchy(collapseChains(tree, true))
-        .sum((node) => (node.children?.length ? 0 : Math.max(1, node.loc ?? 0)))
+        .sum((node) => (node.children?.length ? 0 : leafSize(node.files)))
         .sort((a, b) => (b.value ?? 0) - (a.value ?? 0) || compareIds(a.data.id, b.data.id))
     const packed = pack<PackNode>()
         .radius((node) => Math.sqrt(node.value ?? 1) * radiusPerSqrtLine)
@@ -97,6 +105,9 @@ export const siblingGap = (group: { children?: { children?: unknown }[] }): numb
     return leafCount > 1 ? 5 : 13
 }
 
+// Every file counts at least one line, so empty files and leaves still take room
+const leafSize = (files: readonly FileRef[] = []): number => Math.max(1, sum(files, (file) => Math.max(1, file.loc)))
+
 const collapseChains = (node: TreeNode, isRoot: boolean): PackNode => {
     const children = node.children?.map((child) => collapseChains(child, false))
     if (!isRoot && node.kind === 'dir' && children?.length === 1) {
@@ -107,20 +118,23 @@ const collapseChains = (node: TreeNode, isRoot: boolean): PackNode => {
 }
 
 const toLayoutNode = (node: HierarchyCircularNode<PackNode>): LayoutNode => {
-    const { id, pinId = id, kind, label, path, loc } = node.data
+    const { id, pinId = id, kind, label, path, files } = node.data
     const parent = node.parent
+    const children = node.children?.map(toLayoutNode)
     return {
         id,
         pinId,
         kind,
         label,
         path,
-        loc,
+        files,
+        fileCount: children ? sum(children, (child) => child.fileCount) : files?.length ?? 0,
+        loc: children ? sum(children, (child) => child.loc) : sum(files ?? [], (file) => file.loc),
         depth: node.depth,
         r: node.r,
         x: parent ? node.x - parent.x : 0,
         y: parent ? node.y - parent.y : 0,
-        children: node.children?.map(toLayoutNode),
+        children,
     }
 }
 
@@ -140,16 +154,27 @@ export const indexNodes = (root: LayoutNode): Map<string, LayoutNode> => {
     return nodesById
 }
 
-// The ids from the root down to each node, which tell what a node is drawn as at any zoom
+// The ids from the root down to each node and file, which tell what each is drawn as at any zoom
 export const indexLineages = (root: LayoutNode): Map<string, string[]> => {
     const lineages = new Map<string, string[]>()
     const visit = (node: LayoutNode, parentLineage: string[]): void => {
         const lineage = [...parentLineage, node.id]
         lineages.set(node.id, lineage)
+        for (const { path } of node.files ?? []) lineages.set(fileId(path), [...lineage, fileId(path)])
         node.children?.forEach((child) => visit(child, lineage))
     }
     visit(root, [])
     return lineages
+}
+
+export const indexFiles = (root: LayoutNode): Map<string, FileEntry> => {
+    const entries = new Map<string, FileEntry>()
+    const visit = (node: LayoutNode): void => {
+        for (const file of node.files ?? []) entries.set(fileId(file.path), { ...file, leaf: node })
+        node.children?.forEach(visit)
+    }
+    visit(root)
+    return entries
 }
 
 export const findTrail = (node: LayoutNode, id: string): LayoutNode[] => {
@@ -334,6 +359,15 @@ export const fitTransform = (centre: Point, r: number, { width, height }: Size):
 
 /* Labels and colors */
 
+// Directories have no name from the agent, so they go by their path
+export const bubbleName = ({ kind, label, path }: Pick<LayoutNode, 'kind' | 'label' | 'path'>): string => {
+    return kind === 'component' ? label : path || '/'
+}
+
+export const describeSize = ({ fileCount, loc }: Pick<LayoutNode, 'fileCount' | 'loc'>): string => {
+    return `${countOf(fileCount, 'file')} · ${countOf(loc, 'line')}`
+}
+
 // The coding agent names components, so file and folder names stay in the tooltip
 export const hasVisibleLabel = ({ kind, depth }: Pick<LayoutNode, 'kind' | 'depth'>): boolean => {
     return kind === 'component' || depth === 0
@@ -347,10 +381,7 @@ export const fitLabel = (label: string, room: number, maxFontSize: number): Fitt
     return { text: truncateString(label, maxLength), fontSize }
 }
 
-// Color is reserved for status, so groups are grays that lighten with depth and files a step lighter than their group
-export const bubbleFill = ({ kind, depth }: Pick<LayoutNode, 'kind' | 'depth'>): string => {
-    const lightness = kind === 'file' ? groupLightness(depth - 1) + fileLightnessLift : groupLightness(depth)
-    return `hsl(0, 0%, ${lightness}%)`
+// Color is reserved for status, so bubbles are grays that lighten with depth
+export const bubbleFill = ({ depth }: Pick<LayoutNode, 'depth'>): string => {
+    return `hsl(0, 0%, ${rootLightness + Math.min(depth, 6) * depthLightnessStep}%)`
 }
-
-const groupLightness = (depth: number): number => rootLightness + Math.min(depth, 6) * depthLightnessStep
