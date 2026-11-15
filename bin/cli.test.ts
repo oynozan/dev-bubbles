@@ -56,7 +56,7 @@ describe('dev-bubbles CLI', { timeout: 30_000 }, () => {
         const freshRepo = makeRepo()
         const { status, stdout } = runCli('init', freshRepo)
         expect(status).toBe(0)
-        expect(JSON.parse(fs.readFileSync(configFile('components.json', freshRepo), 'utf8'))).toEqual({ version: 1, components: [] })
+        expect(fs.readFileSync(configFile('components.json', freshRepo), 'utf8')).toBe('{\n    "version": 1,\n    "components": []\n}\n')
         expect(JSON.parse(fs.readFileSync(configFile('bugs.json', freshRepo), 'utf8'))).toEqual({ version: 1, bugs: [] })
         const gitignore = fs.readFileSync(path.join(freshRepo, '.gitignore'), 'utf8').split('\n')
         expect(gitignore).toEqual(expect.arrayContaining(['node_modules', '.dev-bubbles/bugs.json', '.dev-bubbles/layout.json']))
