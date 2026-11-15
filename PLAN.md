@@ -32,7 +32,7 @@ A local dashboard that shows a git repo as live, nested bubbles (components → 
    - `layout.json`: pinned positions written by the UI; gitignored.
 
    The server watches these like any other file. Edits show up live.
-3. **AI labels come from the coding agent** through a slash command, so no API key is needed. When there's no manifest yet, fall back to the directory tree with folder names (the original Repo Visualizer behavior).
+3. **AI labels come from the coding agent** through a slash command, so no API key is needed. The map shows only the names the agent writes, never file or folder names. When there's no manifest yet, fall back to the directory tree drawn without names, with a hint to run `/map`.
 4. **File set:** `git ls-files --cached --others --exclude-standard`. That's tracked files plus untracked files that aren't gitignored, so files the agent just created appear before they're committed. Add a `--tracked-only` flag for strict mode.
 5. **Transport:** Server-Sent Events from server to client (full snapshot, debounced). Plain `POST` from client to server for layout pins. No WebSocket.
 6. **Rendering:** SVG. React renders the node structure. d3-force writes positions straight to DOM refs on each tick; never call `setState` per tick. Target is up to about 3k files.
@@ -75,7 +75,6 @@ web/
     BugPanel.tsx  Breadcrumb.tsx  ErrorBanner.tsx  Legend.tsx
   lib/
     utils.ts                from the original (truncateString, keepBetween, keepCircleInsideCircle, …)
-    language-colors.json    from the original
 templates/
   claude-snippet.md         paste into the target repo's CLAUDE.md
   commands/map.md           /map slash command
@@ -115,7 +114,7 @@ scripts/make-fixture.ts     copies the fixture to a temp dir and makes it its ow
         }
       ]
     },
-    { "id": "lib", "label": "lib", "include": ["src/lib/**"] }
+    { "id": "lib", "label": "Shared Utilities", "include": ["src/lib/**"] }
   ],
   "httpEdges": [
     { "from": "web", "to": "api.billing", "note": "calls BILLING_URL from env" }
@@ -125,10 +124,10 @@ scripts/make-fixture.ts     copies the fixture to a temp dir and makes it its ow
 
 Rules:
 - `id` must be unique and stable. The agent may change labels but must keep ids, so bug marks and pins survive.
-- `label` is short and human-readable. Folder names that are already clear stay as they are (`lib` stays `lib`).
+- `label` is short and human-readable and says what the code does. It is the only name the map shows, so it is never a raw folder or file name (`lib` becomes `Shared Utilities`).
 - `include` / optional `exclude` are micromatch globs relative to the repo root. A group can span several folders.
 - A file belongs to the **deepest** component whose globs match it. If two match at the same depth, the first in document order wins.
-- Files that match no component go under an `Unmapped` root bubble, grouped by directory with folder-name labels.
+- Files that match no component go under an `Unmapped` root bubble, grouped by directory without names.
 - `httpEdges` are manual dashed edges between component ids, for calls the detector can't see.
 
 ### `bugs.json`
@@ -223,9 +222,14 @@ type Snapshot = {
   - Double-click unpins.
   - The containment force clamps pins that end up outside a resized parent.
 - Labels:
-  - Curved `CircleText` on open components; centered text on closed components and files.
+  - Only components (the `Unmapped` bubble included) and the root draw a label: curved `CircleText` when open, centered text when closed.
+  - Files and directories draw no label. Their path shows in the hover tooltip.
+  - When the snapshot has no components yet, show a hint to run `/map` in the coding agent.
   - Replace the old rule that hides labels longer than `r * 0.5` (`Tree.tsx` line ~267). Truncate with an ellipsis instead, and show the full label in a hover tooltip.
-- Colors: files by language (`language-colors.json`). Components get a neutral fill shaded by depth.
+- Colors:
+  - Dark theme only, page and map background `#1a1a1a`.
+  - No file-type colors. Groups get a neutral dark fill shaded by depth, files a flat neutral a bit lighter than their group.
+  - Color is reserved for status: bug marks and the ring on closed ancestors (Phase 6).
 - **Done when:**
   - Zoom and drag are smooth on this repo and on a ~2k-file repo.
   - Dragging a component carries its children.
@@ -251,8 +255,8 @@ type Snapshot = {
   2. Open entry points and key files only as needed.
   3. Write `components.json`:
      - at most 4 levels deep
-     - short human-readable labels
-     - clear folder names kept as they are
+     - short human-readable labels that say what the code does, never raw folder or file names
+     - every area a user can zoom into named
      - existing ids never renamed
      - every source file covered
   4. Run `dev-bubbles validate` until it's clean.
@@ -270,7 +274,7 @@ type Snapshot = {
 - `web/map/edges.ts`:
   - Map both ends of each file edge to their deepest **visible** ancestor (visible = drawn at the current zoom).
   - Drop self-edges and merge duplicates. The count sets stroke width.
-  - Draw a solid line with an arrowhead and a slight curve.
+  - Draw a neutral light gray solid line with an arrowhead and a slight curve. Edges are never colored by language.
   - Hovering a bubble highlights its incoming and outgoing edges and dims the rest.
 - **Done when:**
   - Tests cover alias resolution, re-exports and dynamic imports on the fixture.
@@ -285,7 +289,7 @@ type Snapshot = {
   - Calls: `fetch`, `axios(...)`, `axios.<method>(...)`, when the URL is a string literal or a template literal whose static prefix starts with `/`.
   - Matching: calls match routes by method + path pattern, with `:id`, `[id]` and `${…}` treated as wildcards. Each match makes an edge from the caller file to the route handler file, with kind `http` and label `METHOD /path`.
 - Manual `httpEdges` from `components.json` are drawn the same way.
-- Style: dashed line; the tooltip shows the method and path.
+- Style: neutral light gray dashed line; the tooltip shows the method and path.
 - **Done when:**
   - The fixture's `fetch('/api/login')` draws a dashed edge to the login route.
   - Unmatched calls appear in `summary`, so the agent can add manual edges.
