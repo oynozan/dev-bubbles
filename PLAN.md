@@ -14,7 +14,7 @@ The slug `dev-bubbles` is used for the CLI, the package name and the per-repo co
 
 ## Goal
 
-A local dashboard that shows a git repo as live, nested bubbles (components → sub-components → files). Solid lines are imports, dashed lines are HTTP calls. The user's coding agent groups and labels components with human-readable names. When the user reports a bug, the agent marks the components that could be involved: **striped red** means suspected, **solid red** means confirmed.
+A local dashboard that shows a git repo as live, nested bubbles (components → sub-components, with the files held by the leaf components). Every bubble is a component named by the agent, and there is no outer bubble for the repo itself. Clicking a bubble opens a draggable details window with its files and their connections. Solid lines are imports, dashed lines are HTTP calls. The user's coding agent groups and labels components with human-readable names. When the user reports a bug, the agent marks the components that could be involved: **striped red** means suspected, **solid red** means confirmed.
 
 ## Non-goals (v1)
 
@@ -36,6 +36,7 @@ A local dashboard that shows a git repo as live, nested bubbles (components → 
 4. **File set:** `git ls-files --cached --others --exclude-standard`. That's tracked files plus untracked files that aren't gitignored, so files the agent just created appear before they're committed. Add a `--tracked-only` flag for strict mode.
 5. **Transport:** Server-Sent Events from server to client (full snapshot, debounced). Plain `POST` from client to server for layout pins. No WebSocket.
 6. **Rendering:** SVG. React renders the node structure. d3-force writes positions straight to DOM refs on each tick; never call `setState` per tick. Target is up to about 3k files.
+7. **Commit history:** the snapshot lists the last 100 commits. Picking one in the list at the bottom left shows the map at that commit, grouped and named by the current `components.json`, so the names stay the same across history.
 
 ## Stack
 
@@ -60,6 +61,7 @@ server/
   edges.ts                  file-level edges (import, http, manual)
   bugs.ts                   bugs.json load/validate
   snapshot.ts               builds the Snapshot sent to the client
+  history.ts                git log, the last 100 commits
 shared/
   schema.ts                 zod schemas + TS types (manifest, bugs, layout, snapshot)
 web/
@@ -83,6 +85,7 @@ templates/
   commands/bug.md           /bug slash command
 fixtures/sample-app/        small app used by tests and manual checks
 scripts/make-fixture.ts     copies the fixture to a temp dir and makes it its own git repo
+scripts/demo-bug.ts         plays a scripted bug through bugs.json (npm run demo:bug)
 ```
 
 ## Data contracts (`shared/schema.ts`)
@@ -90,8 +93,9 @@ scripts/make-fixture.ts     copies the fixture to a temp dir and makes it its ow
 ### Node ids
 
 - Component: its manifest `id` (dot path, e.g. `auth.oauth.google`)
+- Own files of a component that also has sub-components: `own:<id>`, an extra leaf with the parent's label
 - Fallback directory node: `dir:<path>`
-- File: `file:<path>`
+- File: `file:<path>`, for edge ends and bug marks only, since files are not bubbles
 
 ### `components.json`
 
@@ -129,7 +133,8 @@ Rules:
 - `label` is short and human-readable and says what the code does. It is the only name the map shows, so it is never a raw folder or file name (`lib` becomes `Shared Utilities`).
 - `include` / optional `exclude` are micromatch globs relative to the repo root. A group can span several folders.
 - A file belongs to the **deepest** component whose globs match it. If two match at the same depth, the first in document order wins.
-- Files that match no component go under an `Unmapped` root bubble, grouped by directory without names.
+- Leaf components hold the files. Avoid a component with both own files and sub-components: its own files then show as an extra leaf with its label, and `summary` lists it. In the example above, a file such as `src/auth/session.ts` would do that to Auth, so it needs a child of its own.
+- Files that match no component go into one `Unmapped` leaf.
 - `httpEdges` are manual dashed edges between component ids, for calls the detector can't see.
 
 ### `bugs.json`
@@ -160,7 +165,7 @@ Rules:
 ### `layout.json`
 
 ```json
-{ "version": 1, "pins": { "auth.oauth": [120, -40], "file:src/lib/url.ts": [10, 5] } }
+{ "version": 1, "pins": { "auth.oauth": [120, -40], "auth.oauth.google": [10, 5] } }
 ```
 
 Pins are in parent-local coordinates.
@@ -169,12 +174,14 @@ Pins are in parent-local coordinates.
 
 ```ts
 type Snapshot = {
-  root: TreeNode                                   // components/dirs/files, LOC for sizing
+  root: TreeNode                                   // components or dirs, leaves carry files { path, loc } for sizing and the details window
   edges: { from: string; to: string; kind: 'import' | 'http'; label?: string }[]  // node ids
   bugs: Bug[]                                      // open only
   pins: Record<string, [number, number]>
   errors: string[]                                 // validation errors for the banner
   generatedAt: string
+  commits: { sha: string; subject: string; author: string; date: string }[]  // last 100, newest first, empty on a past commit
+  commit?: string                                  // set when the snapshot shows a past commit
 }
 ```
 
@@ -224,13 +231,14 @@ type Snapshot = {
   - Double-click unpins.
   - The containment force clamps pins that end up outside a resized parent.
 - Labels:
-  - Only components (the `Unmapped` bubble included) and the root draw a label: curved `CircleText` when open, centered text when closed.
-  - Files and directories draw no label. Their path shows in the hover tooltip.
+  - Only components (the `Unmapped` leaf included) draw a label: curved `CircleText` when open, centered text when closed. There is no root bubble, the top level shows the components.
+  - Files are not bubbles. Fallback directories draw no label, their path shows in the hover tooltip.
+- Details window: clicking a bubble opens a draggable window that lists its files with their imports, importers and HTTP calls, and the bug marks on them.
   - When the snapshot has no components yet, show a hint to run `/map` in the coding agent.
   - Replace the old rule that hides labels longer than `r * 0.5` (`Tree.tsx` line ~267). Truncate with an ellipsis instead, and show the full label in a hover tooltip.
 - Colors:
   - Dark theme only, page and map background `#1a1a1a`.
-  - No file-type colors. Groups get a neutral dark fill shaded by depth, files a flat neutral a bit lighter than their group.
+  - No file-type colors. Groups get a neutral dark fill shaded by depth, leaves a flat neutral a bit lighter than their group.
   - Color is reserved for status: bug marks and the ring on closed ancestors (Phase 6).
 - **Done when:**
   - Zoom and drag are smooth on this repo and on a ~2k-file repo.
@@ -249,6 +257,7 @@ type Snapshot = {
   - the directory tree with file counts and LOC
   - the top cross-directory import counts (once Phase 4 exists)
   - the current components with their file counts
+  - components with both own files and sub-components
   - unmapped files
   - unmatched HTTP calls (once Phase 5 exists)
 - CLI `validate <repo>`: validates both JSON files and prints each error with its JSON path. Also reports components that match no files and files that match no component. Exits 1 on any error.
@@ -258,7 +267,8 @@ type Snapshot = {
   3. Write `components.json`:
      - at most 4 levels deep
      - short human-readable labels that say what the code does, never raw folder or file names
-     - every area a user can zoom into named
+     - every bubble a meaningful named unit, leaves of roughly a handful to a few dozen files
+     - no component with both own files and sub-components
      - existing ids never renamed
      - every source file covered
   4. Run `dev-bubbles validate` until it's clean.
@@ -308,6 +318,7 @@ type Snapshot = {
   - Lists open bugs.
   - Clicking a bug zooms to fit its marks and shows each mark's `reason`.
   - With several open bugs, all marks are shown; selecting one dims the others.
+- `scripts/demo-bug.ts` (`npm run demo:bug -- [repo]`) tests the flow without an agent. It writes a demo bug in steps 4 s apart (three suspected components, one component and one file, the file confirmed, fixed) and then removes it, keeping other bugs.
 - `templates/commands/bug.md` and `templates/claude-snippet.md` tell the agent, when the user reports a bug, to:
   1. Read `components.json` (or run `summary`).
   2. Add a bug with `suspected` marks on the likely components before digging into code.
