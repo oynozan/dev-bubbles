@@ -18,7 +18,9 @@
             .bubble { cursor: pointer; }
             .bubble > circle { stroke: #ffffff; stroke-opacity: 0.06; vector-effect: non-scaling-stroke; }
             .bubble > circle.group { stroke-opacity: 0.12; }
-            .label { fill: #e5e5e5; stroke: #1a1a1a; stroke-linejoin: round; paint-order: stroke; font-weight: 500; pointer-events: none; }
+            .label { fill: #e5e5e5; stroke: #1a1a1a; stroke-width: 0.25em; stroke-linejoin: round; paint-order: stroke; font-weight: 500; pointer-events: none; }
+            /* The map sets --zoom when a zoom ends, so an open group's name never shrinks below 11px on screen */
+            .label.curved { font-size: max(var(--fitted-size), calc(11px / var(--zoom, 1))); }
             .zooming .label { display: none; }
 
             /* Stroke and fill opacity, since opacity on each of thousands of paths composites them one by one */

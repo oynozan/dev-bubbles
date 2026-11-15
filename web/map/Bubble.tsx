@@ -1,5 +1,5 @@
 import { memo, useCallback } from 'react'
-import type { MouseEvent, ReactElement } from 'react'
+import type { CSSProperties, MouseEvent, ReactElement } from 'react'
 import { CircleText } from './CircleText.tsx'
 import { bubbleFill, fitLabel } from './layout.ts'
 import type { LayoutNode } from './layout.ts'
@@ -31,7 +31,6 @@ type HiddenMarksRingProps = {
     actions: BubbleActions
 }
 
-const haloShare = 0.25
 const badgeHeight = 16
 const badgeDigitWidth = 6.5
 const maxBadgeCount = 99
@@ -87,16 +86,16 @@ const tooltipOf = ({ label, path, loc }: LayoutNode): string => {
     return [label, path, lineCount].filter(Boolean).join('\n')
 }
 
+// The stylesheet raises the fitted size to a readable minimum on screen
 const CurvedLabel = ({ node }: LabelProps) => {
     const { text, fontSize } = fitLabel(node.label, node.r * 2.2, node.r * 0.08)
 
     return (
         <CircleText
-            className="label"
+            className="label curved"
             r={node.r - fontSize * 0.3}
             text={text}
-            fontSize={fontSize}
-            strokeWidth={fontSize * haloShare}
+            style={{ '--fitted-size': `${fontSize}px` } as CSSProperties}
         />
     )
 }
@@ -108,7 +107,6 @@ const CenteredLabel = ({ node }: LabelProps) => {
         <text
             className="label"
             fontSize={fontSize}
-            strokeWidth={fontSize * haloShare}
             textAnchor="middle"
             dominantBaseline="central"
         >

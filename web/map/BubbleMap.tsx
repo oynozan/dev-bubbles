@@ -161,7 +161,11 @@ class MapController implements BubbleActions, EdgeActions {
                 if (isScaling) this.counterScaleMarks()
                 if (this.refreshOpenIds()) this.syncSimulations()
             })
-            .on('end', () => svg.classList.remove('zooming'))
+            .on('end', () => {
+                svg.classList.remove('zooming')
+                // Labels are hidden while scaling, so restyling them once at the end is enough
+                svg.style.setProperty('--zoom', String(this.view.k))
+            })
         select(svg).call(this.zoomBehavior).on('dblclick.zoom', null)
         const resizeObserver = new ResizeObserver(() => {
             this.size = measure(svg)
