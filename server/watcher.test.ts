@@ -14,6 +14,8 @@ describe('watchRepo', () => {
     beforeEach(() => {
         dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-bubbles-watch-'))
         fs.mkdirSync(path.join(dir, 'node_modules', 'pkg'), { recursive: true })
+        fs.mkdirSync(path.join(dir, '.git', 'objects'), { recursive: true })
+        fs.writeFileSync(path.join(dir, '.git', 'index'), 'index 1\n')
         fs.mkdirSync(path.join(dir, 'src'))
         calls = 0
     })
@@ -37,7 +39,15 @@ describe('watchRepo', () => {
     it('ignores changes inside ignored folders', async () => {
         watcher = await watchRepo(dir, () => calls++)
         fs.writeFileSync(path.join(dir, 'node_modules', 'pkg', 'index.js'), 'module.exports = {}\n')
+        fs.writeFileSync(path.join(dir, '.git', 'objects', 'blob'), 'blob\n')
         await delay(600)
         expect(calls).toBe(0)
+    })
+
+    it('calls back when the git index changes', async () => {
+        watcher = await watchRepo(dir, () => calls++)
+        fs.writeFileSync(path.join(dir, '.git', 'index'), 'index 2\n')
+        await delay(600)
+        expect(calls).toBe(1)
     })
 })

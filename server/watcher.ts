@@ -32,5 +32,11 @@ export function watchRepo(repoRoot: string, onChange: () => void): Promise<RepoW
 }
 
 function isIgnoredPath(repoRoot: string, filePath: string): boolean {
-    return path.relative(repoRoot, filePath).split(path.sep).some((segment) => ignoredSegments.has(segment))
+    const segments = path.relative(repoRoot, filePath).split(path.sep)
+    return !isGitIndexPath(segments) && segments.some((segment) => ignoredSegments.has(segment))
+}
+
+// git add and git rm change the file set through .git/index alone
+function isGitIndexPath(segments: string[]): boolean {
+    return segments[0] === '.git' && (segments.length === 1 || (segments.length === 2 && segments[1] === 'index'))
 }
