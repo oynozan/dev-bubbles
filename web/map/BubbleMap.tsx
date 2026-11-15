@@ -1,7 +1,8 @@
 /*
  * Interactive bubble map.
- * React renders the nested <g> tree for open groups only, with bug marks on the bubbles and
- * the edges between the drawn bubbles in a layer above it. MapController owns everything that
+ * React renders the nested <g> tree under the repo, which draws no bubble itself, for open
+ * groups only, with bug marks on the bubbles and the edges between the drawn bubbles in a
+ * layer above it. MapController owns everything that
  * changes faster than React should, the node positions, one force simulation per open sibling
  * group, d3-zoom on the svg, d3-drag per bubble and the edge hover highlight, and writes
  * transforms, edge paths and the counter-scaled mark stripes and badges straight to the DOM.
@@ -98,13 +99,17 @@ export const BubbleMap = ({ snapshot }: BubbleMapProps) => {
                 </defs>
                 <g ref={layerRef}>
                     <g className="bubbles">
-                        <Bubble
-                            node={tree}
-                            openIds={openIds}
-                            marks={marks}
-                            hiddenMarks={hiddenMarks}
-                            actions={controller}
-                        />
+                        {/* The repo draws no bubble of its own unless it holds nothing but files */}
+                        {(tree.children ?? [tree]).map((node) => (
+                            <Bubble
+                                key={node.id}
+                                node={node}
+                                openIds={openIds}
+                                marks={marks}
+                                hiddenMarks={hiddenMarks}
+                                actions={controller}
+                            />
+                        ))}
                     </g>
                     <EdgeLayer edges={edges} actions={controller} />
                 </g>
@@ -319,8 +324,9 @@ class MapController implements BubbleActions, EdgeActions {
 
     private createSimulation(group: LayoutNode): GroupSimulation {
         const padding = siblingGap(group) / 2
+        const isRoot = group.id === ROOT_ID
         // The initial view centres the root, so the top-level centre pull doubles as the viewport centre force
-        const centreStrength = group.id === ROOT_ID ? 0.03 : 0.06
+        const centreStrength = isRoot ? 0.03 : 0.06
         const simulation = forceSimulation(this.membersOf(group))
             .alpha(0)
             .alphaDecay(alphaDecay)
@@ -328,7 +334,8 @@ class MapController implements BubbleActions, EdgeActions {
             .force('centreX', forceX<BubbleState>(0).strength(centreStrength))
             .force('centreY', forceY<BubbleState>(0).strength(centreStrength))
             .force('collide', forceCollide<BubbleState>((bubble) => bubble.r + padding))
-            .force('contain', forceContain(() => this.bubbles.get(group.id)?.r ?? group.r))
+            // The repo draws no circle, so top-level bubbles float free on the background
+            .force('contain', isRoot ? null : forceContain(() => this.bubbles.get(group.id)?.r ?? group.r))
             .stop()
         simulation.on('tick', () => {
             this.placeAll(simulation.nodes())
