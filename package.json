@@ -22,7 +22,8 @@
         "start": "node dist/bin/cli.js",
         "test": "vitest run",
         "typecheck": "tsc --noEmit",
-        "fixture": "tsx scripts/make-fixture.ts"
+        "fixture": "tsx scripts/make-fixture.ts",
+        "demo:bug": "tsx scripts/demo-bug.ts"
     },
     "dependencies": {
         "chokidar": "^4.0.3",
