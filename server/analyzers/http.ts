@@ -39,7 +39,7 @@ function serverRoute(call: CallExpression): Route | undefined {
     const hasHandler = args.length >= 2 && args.at(-1)?.type !== 'ObjectExpression'
     if (!serverMethods.has(method) || !hasHandler || isIdentifier(callee.object, 'axios')) return undefined
     const path = localPath(args[0])
-    // Server routes name parameters with :id, so an interpolated path is a client call
+    // Server routes name their parameters, so an interpolated path is a client call
     return path === undefined || path.includes('${') ? undefined : { method: method.toUpperCase(), path }
 }
 
