@@ -158,7 +158,7 @@ class MapController implements BubbleActions {
         bubble.fy = null
         bubble.pin = undefined
         this.simulations.get(bubble.parentId)?.alpha(reheatAlpha).restart()
-        savePin({ id, pin: null })
+        savePin({ id: bubble.pinId, pin: null })
     }
 
     private updateRootZoom(): void {
@@ -265,7 +265,7 @@ class MapController implements BubbleActions {
                 this.simulations.get(bubble.parentId)?.alphaTarget(0)
                 if (bubble.fx == null || bubble.fy == null) return
                 bubble.pin = [bubble.fx, bubble.fy]
-                savePin({ id, pin: bubble.pin })
+                savePin({ id: bubble.pinId, pin: bubble.pin })
             })
         select(element).call(dragBehavior)
     }

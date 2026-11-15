@@ -14,6 +14,8 @@ import type { Point } from '../lib/utils.ts'
 
 export type LayoutNode = {
     id: string
+    // A collapsed directory chain keys its pin and spot by its outermost directory
+    pinId: string
     kind: NodeKind
     label: string
     path?: string
@@ -26,6 +28,7 @@ export type LayoutNode = {
 
 export type BubbleState = SimulationNodeDatum & {
     id: string
+    pinId: string
     parentId: string
     r: number
     isGroup: boolean
@@ -51,6 +54,11 @@ export type FittedLabel = {
     fontSize: number
 }
 
+type PackNode = TreeNode & {
+    pinId?: string
+    children?: PackNode[]
+}
+
 export const openRadius = 60
 export const fileColors = new Map<string, string>(Object.entries(languageColors))
 
@@ -67,7 +75,7 @@ export const packTree = (tree: TreeNode): LayoutNode => {
     const root = hierarchy(collapseChains(tree, true))
         .sum((node) => (node.children?.length ? 0 : Math.max(1, node.loc ?? 0)))
         .sort((a, b) => (b.value ?? 0) - (a.value ?? 0) || compareIds(a.data.id, b.data.id))
-    const packed = pack<TreeNode>()
+    const packed = pack<PackNode>()
         .radius((node) => Math.sqrt(node.value ?? 1) * radiusPerSqrtLine)
         .padding(siblingGap)(root)
     return toLayoutNode(packed)
@@ -79,20 +87,21 @@ export const siblingGap = (group: { children?: { children?: unknown }[] }): numb
     return leafCount > 1 ? 5 : 13
 }
 
-const collapseChains = (node: TreeNode, isRoot: boolean): TreeNode => {
+const collapseChains = (node: TreeNode, isRoot: boolean): PackNode => {
     const children = node.children?.map((child) => collapseChains(child, false))
     if (!isRoot && node.kind === 'dir' && children?.length === 1) {
         const [onlyChild] = children
-        return { ...onlyChild, label: `${node.label}/${onlyChild.label}` }
+        return { ...onlyChild, label: `${node.label}/${onlyChild.label}`, pinId: node.id }
     }
     return { ...node, children }
 }
 
-const toLayoutNode = (node: HierarchyCircularNode<TreeNode>): LayoutNode => {
-    const { id, kind, label, path } = node.data
+const toLayoutNode = (node: HierarchyCircularNode<PackNode>): LayoutNode => {
+    const { id, pinId = id, kind, label, path } = node.data
     const parent = node.parent
     return {
         id,
+        pinId,
         kind,
         label,
         path,
@@ -139,16 +148,17 @@ export const syncBubbles = (
 ): Set<string> => {
     const changedGroups = new Set<string>()
     const seen = new Set<string>()
+    const previousByPinId = new Map([...bubbles.values()].map((bubble) => [bubble.pinId, bubble]))
 
     const visit = (node: LayoutNode, parentId: string, isFreshGroup: boolean): void => {
         seen.add(node.id)
         const previous = bubbles.get(node.id)
         const bubble = previous && previous.parentId === parentId
             ? previous
-            : newBubble(node, parentId, isFreshGroup)
+            : newBubble(node, parentId, isFreshGroup, previousByPinId.get(node.pinId))
         const isNew = bubble !== previous
         const isResized = Math.abs(bubble.r - node.r) > radiusTolerance
-        const isPinMoved = applyPin(bubble, pins[node.id])
+        const isPinMoved = applyPin(bubble, pins[node.pinId])
         bubble.r = node.r
         bubble.isGroup = !!node.children?.length
         bubbles.set(node.id, bubble)
@@ -169,9 +179,18 @@ export const syncBubbles = (
 }
 
 // A group with no surviving members takes the packed layout, otherwise newcomers start near its centre
-const newBubble = (node: LayoutNode, parentId: string, isFreshGroup: boolean): BubbleState => {
+const newBubble = (
+    node: LayoutNode,
+    parentId: string,
+    isFreshGroup: boolean,
+    samePinBubble: BubbleState | undefined,
+): BubbleState => {
     const spread = isFreshGroup ? 1 : newNodeSpread
-    return { id: node.id, parentId, r: node.r, isGroup: false, x: node.x * spread, y: node.y * spread }
+    // A directory chain that expands or collapses stays where it stood
+    const [x, y] = samePinBubble?.parentId === parentId
+        ? [samePinBubble.x, samePinBubble.y]
+        : [node.x * spread, node.y * spread]
+    return { id: node.id, pinId: node.pinId, parentId, r: node.r, isGroup: false, x, y }
 }
 
 const applyPin = (bubble: BubbleState, pin: Pin | undefined): boolean => {
