@@ -19,6 +19,9 @@ const excludedNames = new Set([
     'yarn.lock',
 ])
 
+// The ext4 directory size the Action saw, which decides where folders sort among files
+const directorySize = 4096
+
 export function buildSnapshot(repoPath: string): Snapshot {
     return {
         root: readDirectory(repoPath, '', path.basename(repoPath)),
@@ -43,7 +46,7 @@ function readDirectory(absolutePath: string, relativePath: string, label: string
             })
         }
     }
-    return { id: `dir:${relativePath}`, label, path: relativePath, size: 0, children }
+    return { id: `dir:${relativePath}`, label, path: relativePath, size: directorySize, children }
 }
 
 function readSortedEntries(directoryPath: string): fs.Dirent[] {

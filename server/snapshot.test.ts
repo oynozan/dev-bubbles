@@ -29,7 +29,7 @@ describe('buildSnapshot', () => {
     })
 
     it('roots the tree at the repo folder', () => {
-        expect(root).toMatchObject({ id: 'dir:', path: '', label: path.basename(fixtureDir), size: 0 })
+        expect(root).toMatchObject({ id: 'dir:', path: '', label: path.basename(fixtureDir), size: 4096 })
     })
 
     it('includes directories and files with their sizes', () => {
