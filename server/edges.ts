@@ -14,7 +14,7 @@ export type EdgeResult = { edges: Edge[], unmatchedCalls: UnmatchedCall[] }
 
 export type FileStamp = { path: string, mtimeMs: number, size: number }
 
-type EdgeIndex = { update(files: FileStamp[], manifest: Manifest | undefined): Promise<EdgeResult> }
+export type EdgeIndex = { update(files: FileStamp[], manifest: Manifest | undefined): Promise<EdgeResult> }
 
 type CachedFile = { mtimeMs: number, size: number, analysis: FileAnalysis, importTargets?: string[] }
 

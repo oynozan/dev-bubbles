@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import http from 'node:http'
 import type { Server } from 'node:http'
@@ -19,6 +20,15 @@ type EventReader = {
 
 function findFile(root: TreeNode, filePath: string): FileRef | undefined {
     return flattenTree(root).flatMap((node) => node.files ?? []).find((file) => file.path === filePath)
+}
+
+function filePaths(root: TreeNode): string[] {
+    return flattenTree(root).flatMap((node) => node.files ?? []).map((file) => file.path)
+}
+
+function git(cwd: string, ...args: string[]): string {
+    const identity = ['-c', 'user.name=Ada Lovelace', '-c', 'user.email=ada@localhost', '-c', 'commit.gpgsign=false']
+    return execFileSync('git', [...identity, ...args], { cwd, encoding: 'utf8' }).trim()
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -147,10 +157,6 @@ describe('startServer', () => {
         expect((await fetch(`${baseUrl}/api/layout`)).status).toBe(405)
     })
 
-    it('answers 404 for /api/snapshot', async () => {
-        expect((await fetch(`${baseUrl}/api/snapshot`)).status).toBe(404)
-    })
-
     it.each(['/..%2f..%2fpackage.json', '/..%5c..%5cpackage.json'])('blocks path traversal via %s', async (attempt) => {
         const response = await fetch(`${baseUrl}${attempt}`)
         expect(response.status).toBe(404)
@@ -162,14 +168,131 @@ describe('startServer', () => {
         expect(response.status).toBe(400)
     })
 
-    it('rejects a request for a host that is not local', async () => {
+    it.each(['/api/events', '/api/snapshot?commit=abcd'])('rejects a request to %s for a host that is not local', async (route) => {
         const status = await new Promise<number | undefined>((resolve, reject) => {
-            http.get(`${baseUrl}/api/events`, { headers: { host: 'attacker.example' } }, (response) => {
+            http.get(`${baseUrl}${route}`, { headers: { host: 'attacker.example' } }, (response) => {
                 response.resume()
                 resolve(response.statusCode)
             }).on('error', reject)
         })
         expect(status).toBe(403)
+    })
+})
+
+describe('startServer history', () => {
+    let repo: string
+    let server: Server
+    let baseUrl: string
+    let first: string
+    let second: string
+
+    function getSnapshot(query: string): Promise<Response> {
+        return fetch(`${baseUrl}/api/snapshot${query}`)
+    }
+
+    async function liveSnapshot(): Promise<Snapshot> {
+        const events = await openEvents(baseUrl)
+        try {
+            return await events.next(5000)
+        } finally {
+            events.close()
+        }
+    }
+
+    beforeAll(async () => {
+        repo = makeFixture()
+        first = git(repo, 'rev-parse', 'HEAD')
+        fs.mkdirSync(path.join(repo, '.dev-bubbles'))
+        fs.writeFileSync(path.join(repo, '.dev-bubbles', 'components.json'), JSON.stringify({
+            version: 1,
+            ignore: ['src/config/**'],
+            components: [{ id: 'auth', label: 'Auth', include: ['src/auth/**'] }],
+        }))
+        fs.writeFileSync(path.join(repo, 'src', 'added.ts'), 'export {}\n')
+        fs.rmSync(path.join(repo, 'src', 'lib', 'logger.ts'))
+        git(repo, 'add', '-A')
+        git(repo, 'commit', '-m', 'Add a file and the components, drop the logger')
+        second = git(repo, 'rev-parse', 'HEAD')
+        fs.appendFileSync(path.join(repo, 'src', 'auth', 'session.ts'), 'export const draft = 1\n')
+        fs.writeFileSync(path.join(repo, 'src', 'staged.ts'), 'export {}\n')
+        git(repo, 'add', 'src/staged.ts')
+        fs.writeFileSync(path.join(repo, 'src', 'untracked.ts'), 'export {}\n')
+        server = await startServer({ repo, port: 0, trackedOnly: false })
+        const { port } = server.address() as AddressInfo
+        baseUrl = `http://127.0.0.1:${port}`
+    })
+
+    afterAll(async () => {
+        const closed = new Promise((resolve) => server.close(resolve))
+        server.closeAllConnections()
+        await closed
+        fs.rmSync(repo, { recursive: true, force: true, maxRetries: 10 })
+    })
+
+    it('lists the commits newest first in the live snapshot', async () => {
+        const live = await liveSnapshot()
+        expect(live.commits.map((commit) => commit.sha)).toEqual([second, first])
+        expect(live).not.toHaveProperty('commit')
+    })
+
+    it('serves a past commit with the current components and leaves the index and working tree alone', async () => {
+        const gitState = () => [git(repo, 'status', '--porcelain'), git(repo, 'ls-files', '--stage'), git(repo, 'worktree', 'list')]
+        const before = gitState()
+        const live = await liveSnapshot()
+        const response = await getSnapshot(`?commit=${first.slice(0, 8)}`)
+        expect(response.status).toBe(200)
+        expect(response.headers.get('content-type')).toBe('application/json; charset=utf-8')
+        const past: Snapshot = await response.json()
+        expect(past).toMatchObject({ commit: first, commits: [], bugs: [], errors: [] })
+        expect(past.root.children?.map((child) => child.id)).toEqual(['auth', 'unmapped'])
+        const pastPaths = filePaths(past.root)
+        const livePaths = filePaths(live.root)
+        const laterPaths = ['src/added.ts', 'src/staged.ts', 'src/untracked.ts']
+        expect(pastPaths).toContain('src/lib/logger.ts')
+        expect(livePaths).not.toContain('src/lib/logger.ts')
+        expect(livePaths).toEqual(expect.arrayContaining(laterPaths))
+        expect(pastPaths.filter((filePath) => laterPaths.includes(filePath))).toEqual([])
+        expect(pastPaths.filter((filePath) => filePath.startsWith('src/config/'))).toEqual([])
+        const sessionLoc = (root: TreeNode) => findFile(root, 'src/auth/session.ts')?.loc ?? 0
+        expect(sessionLoc(live.root)).toBe(sessionLoc(past.root) + 1)
+        expect(past.edges).toContainEqual(expect.objectContaining({ from: 'file:web/src/LoginPage.tsx', kind: 'http' }))
+        expect(gitState()).toEqual(before)
+        expect(git(repo, 'rev-parse', 'HEAD')).toBe(second)
+    })
+
+    it('leaves the config folder out of a commit that tracks it', async () => {
+        const past: Snapshot = await (await getSnapshot(`?commit=${second}`)).json()
+        expect(past.commit).toBe(second)
+        expect(filePaths(past.root)).toContain('src/added.ts')
+        expect(filePaths(past.root).filter((filePath) => filePath.startsWith('.dev-bubbles/'))).toEqual([])
+    })
+
+    it.each(['', '?commit=', '?commit=abc', `?commit=${'a'.repeat(41)}`, '?commit=HEAD', '?commit=--all', '?commit=abcd%20'])(
+        'answers 400 for the malformed query "%s"',
+        async (query) => {
+            expect((await getSnapshot(query)).status).toBe(400)
+        },
+    )
+
+    it('answers 404 for a commit the repo does not have', async () => {
+        expect((await getSnapshot('?commit=deadbeefdeadbeef')).status).toBe(404)
+        expect((await getSnapshot(`?commit=${git(repo, 'rev-parse', 'HEAD^{tree}')}`)).status).toBe(404)
+    })
+
+    it('answers 405 for other methods', async () => {
+        expect((await fetch(`${baseUrl}/api/snapshot?commit=${first}`, { method: 'POST' })).status).toBe(405)
+    })
+
+    it('pushes the new commit list within 1 s of a commit that leaves the index alone', async () => {
+        const events = await openEvents(baseUrl)
+        try {
+            await events.next(5000)
+            git(repo, 'commit', '--allow-empty', '-m', 'Live commit')
+            const next = await waitForSnapshot(events, (snapshot) => snapshot.commits[0]?.subject === 'Live commit')
+            expect(next.commits).toHaveLength(3)
+        } finally {
+            events.close()
+        }
     })
 })
 

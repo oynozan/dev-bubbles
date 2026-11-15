@@ -8,7 +8,7 @@ import { buildTree, checkManifest, flattenTree, listComponents, treeIds } from '
 import { createEdgeIndex } from '../server/edges.ts'
 import type { UnmatchedCall } from '../server/edges.ts'
 import { startServer } from '../server/index.ts'
-import { compareStrings, createInventory, findRepoRoot } from '../server/inventory.ts'
+import { compareStrings, createInventory, findRepoRoot, listRepoFiles } from '../server/inventory.ts'
 import type { InventoryFile } from '../server/inventory.ts'
 import { configDir, errorMessage, formatJson, readJsonFile } from '../server/json-file.ts'
 import type { JsonFileResult } from '../server/json-file.ts'
@@ -142,7 +142,7 @@ function copyTemplates(sourceDir: string, repoRoot: string, targetDir: string, e
 async function loadRepo(repoRoot: string, trackedOnly: boolean): Promise<RepoState> {
     const manifestResult = readJsonFile(path.join(repoRoot, configDir, 'components.json'), manifestSchema)
     const manifest = manifestResult.status === 'ok' ? manifestResult.value : undefined
-    const files = await createInventory(repoRoot, { trackedOnly }).scan(manifest?.ignore ?? [])
+    const files = await createInventory(repoRoot, () => listRepoFiles(repoRoot, trackedOnly)).scan(manifest?.ignore ?? [])
     return { manifestResult, manifest, files, root: buildTree(path.basename(repoRoot), files, manifest) }
 }
 

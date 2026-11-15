@@ -2,26 +2,38 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { z } from 'zod'
 import { bugsFileSchema, layoutFileSchema, manifestSchema, ROOT_ID } from '../shared/schema.ts'
-import type { PinRequest, Snapshot } from '../shared/schema.ts'
+import type { Edge, Manifest, PinRequest, Snapshot, TreeNode } from '../shared/schema.ts'
 import { resolveBugs } from './bugs.ts'
 import { buildTree, checkManifest, treeIds } from './components.ts'
 import { createEdgeIndex } from './edges.ts'
-import { listCommits } from './history.ts'
-import { createInventory } from './inventory.ts'
+import type { EdgeIndex } from './edges.ts'
+import { listCommits, resolveCommit, withCommitTree } from './history.ts'
+import { createInventory, listRepoFiles } from './inventory.ts'
+import type { InventoryFile } from './inventory.ts'
 import { configDir, errorMessage, formatJson, readJsonFile } from './json-file.ts'
 
 export type SnapshotSource = {
     rescan(): Promise<Snapshot>
     setPin(request: PinRequest): void
+    // Resolves undefined when the repo has no such commit
+    snapshotAt(commit: string): Promise<Snapshot | undefined>
+}
+
+type MapView = {
+    root: TreeNode
+    edges: Edge[]
+    nodeIds: Set<string>
 }
 
 type LastValidReader<T> = (errors: string[]) => T | undefined
+
+const commitViewLimit = 20
 
 export function createSnapshotSource(repoRoot: string, options: { trackedOnly: boolean }): SnapshotSource {
     const repoName = path.basename(repoRoot)
     const configRoot = path.join(repoRoot, configDir)
     const layoutPath = path.join(configRoot, 'layout.json')
-    const inventory = createInventory(repoRoot, options)
+    const inventory = createInventory(repoRoot, () => listRepoFiles(repoRoot, options.trackedOnly))
     const edgeIndex = createEdgeIndex(repoRoot)
     const readManifest = createLastValidReader(path.join(configRoot, 'components.json'), manifestSchema, checkManifest)
     const readBugs = createLastValidReader(path.join(configRoot, 'bugs.json'), bugsFileSchema)
@@ -29,6 +41,7 @@ export function createSnapshotSource(repoRoot: string, options: { trackedOnly: b
     let lastBuilt = emptySnapshot(repoName)
     let running: Promise<Snapshot> | undefined
     let queued: Promise<Snapshot> | undefined
+    const commitViews = new Map<string, Promise<MapView>>()
 
     async function build(): Promise<Snapshot> {
         const errors: string[] = []
@@ -36,11 +49,7 @@ export function createSnapshotSource(repoRoot: string, options: { trackedOnly: b
         const bugsFile = readBugs(errors)
         const layout = readLayout(errors)
         const [files, commits] = await Promise.all([inventory.scan(manifest?.ignore ?? []), listCommits(repoRoot)])
-        const root = buildTree(repoName, files, manifest)
-        const nodeIds = treeIds(root)
-        // A manual http edge can name a component that has no files and so no node
-        const edges = (await edgeIndex.update(files, manifest)).edges
-            .filter((edge) => nodeIds.has(edge.from) && nodeIds.has(edge.to))
+        const { root, edges, nodeIds } = await mapFiles(repoName, files, edgeIndex, manifest)
         const { bugs, errors: bugErrors } = resolveBugs(bugsFile, nodeIds)
         errors.push(...bugErrors)
         return { root, edges, bugs, pins: layout?.pins ?? {}, errors, generatedAt: new Date().toISOString(), commits }
@@ -77,7 +86,49 @@ export function createSnapshotSource(repoRoot: string, options: { trackedOnly: b
         writeJsonFile(layoutPath, { version: 1, pins: Object.fromEntries(pins) })
     }
 
-    return { rescan, setPin }
+    // Keyed by the manifest too, since past commits are named with the current one
+    function viewAt(sha: string, manifest: Manifest | undefined): Promise<MapView> {
+        const key = JSON.stringify([sha, manifest ?? null])
+        const cached = commitViews.get(key)
+        if (cached) return cached
+        const view = withCommitTree(repoRoot, sha, async (treeDir, paths) => {
+            const files = await createInventory(treeDir, async () => paths).scan(manifest?.ignore ?? [])
+            return mapFiles(repoName, files, createEdgeIndex(treeDir), manifest)
+        })
+        commitViews.set(key, view)
+        view.catch(() => commitViews.delete(key))
+        if (commitViews.size > commitViewLimit) {
+            const [oldest] = commitViews.keys()
+            commitViews.delete(oldest)
+        }
+        return view
+    }
+
+    async function snapshotAt(commit: string): Promise<Snapshot | undefined> {
+        const sha = await resolveCommit(repoRoot, commit)
+        if (!sha) return undefined
+        const errors: string[] = []
+        const manifest = readManifest(errors)
+        const { root, edges } = await viewAt(sha, manifest)
+        const pins = readLayout([])?.pins ?? {}
+        return { root, edges, bugs: [], pins, errors, generatedAt: new Date().toISOString(), commits: [], commit: sha }
+    }
+
+    return { rescan, setPin, snapshotAt }
+}
+
+async function mapFiles(
+    repoName: string,
+    files: InventoryFile[],
+    edgeIndex: EdgeIndex,
+    manifest: Manifest | undefined,
+): Promise<MapView> {
+    const root = buildTree(repoName, files, manifest)
+    const nodeIds = treeIds(root)
+    // A manual http edge can name a component that has no files and so no node
+    const edges = (await edgeIndex.update(files, manifest)).edges
+        .filter((edge) => nodeIds.has(edge.from) && nodeIds.has(edge.to))
+    return { root, edges, nodeIds }
 }
 
 // An invalid file keeps its last valid value in use while its errors are reported

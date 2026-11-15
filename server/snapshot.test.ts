@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -169,6 +170,23 @@ describe('createSnapshotSource', () => {
         expect(JSON.parse(fs.readFileSync(layoutPath, 'utf8'))).toEqual({ version: 1, pins: { 'file:src/lib/url.ts': [-3, 4] } })
         expect(fs.readdirSync(path.dirname(layoutPath))).toEqual(['layout.json'])
         expect((await source.rescan()).pins).toEqual({ 'file:src/lib/url.ts': [-3, 4] })
+    })
+
+    it('builds a past commit once per manifest and names it with the current manifest', async () => {
+        const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: fixtureDir, encoding: 'utf8' }).trim()
+        const [plain, again] = await Promise.all([source.snapshotAt(sha), source.snapshotAt(sha.slice(0, 7))])
+        expect(again?.root).toBe(plain?.root)
+        expect(plain?.root.children?.map((child) => child.id)).not.toContain('auth')
+        writeConfig('components.json', manifest)
+        writeConfig('layout.json', { version: 1, pins: { auth: [3, 4] } })
+        const named = await source.snapshotAt(sha)
+        expect(named).toMatchObject({ commit: sha, commits: [], bugs: [], errors: [], pins: { auth: [3, 4] } })
+        expect(named?.root.children?.map((child) => child.id)).toEqual(['auth', 'unmapped'])
+        writeConfig('components.json', '{ "version": 1, ')
+        const broken = await source.snapshotAt(sha)
+        expect(broken?.root).toBe(named?.root)
+        expect(broken?.errors).toEqual([expect.stringMatching(/^components\.json: /)])
+        expect(await source.snapshotAt('deadbeefdeadbeef')).toBeUndefined()
     })
 
     it('runs at most one follow-up scan for calls made during a scan', async () => {

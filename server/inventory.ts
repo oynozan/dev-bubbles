@@ -42,13 +42,13 @@ export async function findGitPath(repoRoot: string, gitPath: string): Promise<st
 }
 
 export function createInventory(
-    repoRoot: string,
-    options: { trackedOnly: boolean },
+    rootDir: string,
+    listPaths: () => Promise<string[]>,
 ): { scan(ignore: string[]): Promise<InventoryFile[]> } {
     let cache = new Map<string, InspectedFile>()
 
     async function inspectFile(filePath: string): Promise<InspectedFile | undefined> {
-        const absolutePath = path.join(repoRoot, filePath)
+        const absolutePath = path.join(rootDir, filePath)
         const stats = await fs.stat(absolutePath).catch(() => undefined)
         if (!stats?.isFile()) return undefined
         const cached = cache.get(filePath)
@@ -62,7 +62,7 @@ export function createInventory(
 
     return {
         async scan(ignore: string[]): Promise<InventoryFile[]> {
-            const paths = (await listFiles(repoRoot, options.trackedOnly))
+            const paths = (await listPaths())
                 .filter((filePath) => !filePath.startsWith(`${configDir}/`))
             const visiblePaths = (ignore.length > 0 ? micromatch.not(paths, ignore, { dot: true }) : paths)
                 .sort(compareStrings)
@@ -80,7 +80,7 @@ export function createInventory(
     }
 }
 
-async function listFiles(repoRoot: string, trackedOnly: boolean): Promise<string[]> {
+export async function listRepoFiles(repoRoot: string, trackedOnly: boolean): Promise<string[]> {
     const args = trackedOnly
         ? ['ls-files', '--cached', '-z']
         : ['ls-files', '--cached', '--others', '--exclude-standard', '-z']

@@ -41,6 +41,7 @@ const contentTypes: Record<string, string> = {
 
 const webDir = path.join(findPackageRoot(import.meta.dirname), 'dist', 'web')
 const maxLayoutBodySize = 64 * 1024
+const commitPattern = /^[0-9a-f]{4,40}$/i
 
 // Other hostnames are refused so a DNS rebinding page cannot read the repo
 const localHostnames = new Set(['127.0.0.1', 'localhost'])
@@ -94,6 +95,9 @@ async function handleRequest(context: RequestContext, request: IncomingMessage, 
         else sendMethodNotAllowed(response, 'POST')
     } else if (pathname === '/api/events') {
         if (request.method === 'GET') context.events.open(response)
+        else sendMethodNotAllowed(response, 'GET')
+    } else if (pathname === '/api/snapshot') {
+        if (request.method === 'GET') await sendCommitSnapshot(context, request.url ?? '/', response)
         else sendMethodNotAllowed(response, 'GET')
     } else if (request.method === 'GET' || request.method === 'HEAD') {
         serveStatic(pathname, response)
@@ -195,6 +199,19 @@ function parseJson(text: string): unknown {
     } catch {
         return undefined
     }
+}
+
+/* Past commits */
+
+async function sendCommitSnapshot(context: RequestContext, url: string, response: ServerResponse): Promise<void> {
+    const commit = new URL(url, 'http://127.0.0.1').searchParams.get('commit') ?? ''
+    if (!commitPattern.test(commit)) {
+        sendText(response, 400, 'Expected ?commit=<sha> with 4 to 40 hex digits')
+        return
+    }
+    const snapshot = await context.snapshots.snapshotAt(commit)
+    if (snapshot) sendJson(response, 200, snapshot)
+    else sendText(response, 404, `Unknown commit ${commit}`)
 }
 
 /* Static files and responses */

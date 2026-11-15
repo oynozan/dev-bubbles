@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { makeFixture } from '../scripts/make-fixture.ts'
-import { createInventory, findRepoRoot } from './inventory.ts'
+import { createInventory, findRepoRoot, listRepoFiles } from './inventory.ts'
 import type { InventoryFile } from './inventory.ts'
 
 function writeFile(root: string, filePath: string, content: string | Buffer): void {
@@ -13,6 +13,10 @@ function writeFile(root: string, filePath: string, content: string | Buffer): vo
 
 function locByPath(files: InventoryFile[]): Map<string, number> {
     return new Map(files.map((file) => [file.path, file.loc]))
+}
+
+function repoInventory(repoRoot: string, trackedOnly = false) {
+    return createInventory(repoRoot, () => listRepoFiles(repoRoot, trackedOnly))
 }
 
 describe('inventory', () => {
@@ -27,7 +31,7 @@ describe('inventory', () => {
         writeFile(fixtureDir, 'assets/logo.bin', Buffer.from([1, 2, 0, 3, 10]))
         writeFile(fixtureDir, 'assets/huge.txt', 'x\n'.repeat(600 * 1024))
         writeFile(fixtureDir, '.dev-bubbles/components.json', '{}\n')
-        files = await createInventory(fixtureDir, { trackedOnly: false }).scan([])
+        files = await repoInventory(fixtureDir).scan([])
     })
 
     afterAll(() => {
@@ -58,20 +62,20 @@ describe('inventory', () => {
     })
 
     it('hides untracked files in tracked-only mode', async () => {
-        const paths = (await createInventory(fixtureDir, { trackedOnly: true }).scan([])).map((file) => file.path)
+        const paths = (await repoInventory(fixtureDir, true).scan([])).map((file) => file.path)
         expect(paths).toContain('src/auth/session.ts')
         expect(paths).not.toContain('src/draft.ts')
     })
 
     it('drops files matching the ignore globs', async () => {
-        const paths = (await createInventory(fixtureDir, { trackedOnly: false }).scan(['**/*.tsx', '.gitignore']))
+        const paths = (await repoInventory(fixtureDir).scan(['**/*.tsx', '.gitignore']))
             .map((file) => file.path)
         expect(paths).toContain('src/auth/session.ts')
         expect(paths.filter((filePath) => filePath.endsWith('.tsx') || filePath === '.gitignore')).toEqual([])
     })
 
     it('picks up edited, added and deleted files on the next scan', async () => {
-        const inventory = createInventory(fixtureDir, { trackedOnly: false })
+        const inventory = repoInventory(fixtureDir)
         await inventory.scan([])
         writeFile(fixtureDir, 'src/draft.ts', 'one\ntwo\nthree\nfour\nfive\n')
         writeFile(fixtureDir, 'src/added.ts', 'export {}\n')
@@ -80,6 +84,24 @@ describe('inventory', () => {
         expect(loc.get('src/draft.ts')).toBe(5)
         expect(loc.get('src/added.ts')).toBe(1)
         expect(loc.has('src/lib/logger.ts')).toBe(false)
+    })
+})
+
+describe('inventory from a given file list', () => {
+    it('reads the listed files from the given folder with the same rules as a repo scan', async () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-bubbles-list-'))
+        try {
+            writeFile(dir, 'src/a.ts', 'one\ntwo\n')
+            writeFile(dir, 'src/b.ts', 'unlisted\n')
+            writeFile(dir, 'src/c.test.ts', 'ignored\n')
+            writeFile(dir, 'logo.bin', Buffer.from([1, 0, 2]))
+            writeFile(dir, '.dev-bubbles/components.json', '{}\n')
+            const listed = ['src/a.ts', 'src/c.test.ts', 'logo.bin', '.dev-bubbles/components.json', 'src/gone.ts']
+            const files = await createInventory(dir, async () => listed).scan(['**/*.test.ts'])
+            expect(files.map((file) => [file.path, file.loc])).toEqual([['src/a.ts', 2]])
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true })
+        }
     })
 })
 
