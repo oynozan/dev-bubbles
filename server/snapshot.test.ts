@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeFixture } from '../scripts/make-fixture.ts'
@@ -218,6 +219,37 @@ describe('createSnapshotSource', () => {
         expect(past?.edges).toEqual(live.edges)
         expect(fs.existsSync(path.join(fixtureDir, 'node_modules', '@acme', 'tsconfig', 'base.json'))).toBe(true)
     })
+
+    it('forgets a past commit that failed to check out so the next request tries again', async () => {
+        const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-bubbles-tmp-'))
+        try {
+            for (const name of ['TMPDIR', 'TMP', 'TEMP']) vi.stubEnv(name, tempRoot)
+            const sha = git(fixtureDir, 'rev-parse', 'HEAD')
+            fs.writeFileSync(path.join(fixtureDir, '.gitattributes'), '*.ts filter=broken\n')
+            git(fixtureDir, 'config', 'filter.broken.smudge', 'false')
+            git(fixtureDir, 'config', 'filter.broken.required', 'true')
+            await expect(source.snapshotAt(sha)).rejects.toThrow(/checkout-index/)
+            expect(fs.readdirSync(tempRoot)).toEqual([])
+            fs.rmSync(path.join(fixtureDir, '.gitattributes'))
+            expect(await source.snapshotAt(sha)).toMatchObject({ commit: sha })
+            expect(fs.readdirSync(tempRoot)).toEqual([])
+        } finally {
+            fs.rmSync(tempRoot, { recursive: true, force: true })
+        }
+    })
+
+    it('keeps the 20 newest past commit views and builds an older one again', async () => {
+        const sha = git(fixtureDir, 'rev-parse', 'HEAD')
+        const rootWith = async (index: number) => {
+            // Ignoring every file keeps each of these checkouts quick, and the extra glob makes each manifest new
+            writeConfig('components.json', { version: 1, ignore: ['**', `view-${index}`], components: [] })
+            return (await source.snapshotAt(sha))?.root
+        }
+        const roots = []
+        for (let index = 0; index <= 20; index++) roots.push(await rootWith(index))
+        expect(await rootWith(20)).toBe(roots[20])
+        expect(await rootWith(0)).not.toBe(roots[0])
+    }, 30_000)
 
     it('runs at most one follow-up scan for calls made during a scan', async () => {
         const first = source.rescan()
