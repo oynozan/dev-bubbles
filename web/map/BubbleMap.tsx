@@ -154,6 +154,8 @@ class MapController implements BubbleActions, EdgeActions {
         this.stripes = stripes
         this.size = measure(svg)
         this.zoomBehavior
+            // Only the middle button pans, so a left press stays free to click and drag bubbles
+            .filter((event: MouseEvent) => event.type !== 'mousedown' || event.button === 1)
             .on('zoom', (event: D3ZoomEvent<SVGSVGElement, unknown>) => {
                 const isScaling = event.transform.k !== this.view.k
                 // The browser reshapes every SVG label at each new scale, so labels hide until the zoom ends
@@ -397,8 +399,7 @@ class MapController implements BubbleActions, EdgeActions {
         let isDragging = false
 
         const dragBehavior = drag<SVGGElement, unknown, SubjectPosition>()
-            // The middle button moves a bubble, so the left button is free to pan the map from anywhere
-            .filter((event: MouseEvent) => event.button === 1 && this.isSmallerThanView(id))
+            .filter((event: MouseEvent) => !event.ctrlKey && !event.button && this.isSmallerThanView(id))
             .clickDistance(dragThreshold)
             .subject(() => {
                 const bubble = this.bubbles.get(id)
@@ -431,7 +432,7 @@ class MapController implements BubbleActions, EdgeActions {
         select(element).call(dragBehavior)
     }
 
-    // A bubble bigger than the view reads as background, so a press on it pans the map
+    // A bubble bigger than the view reads as background, so it stays put
     private isSmallerThanView(id: string): boolean {
         const r = this.bubbles.get(id)?.r ?? 0
         return r * this.view.k < Math.min(this.size.width, this.size.height) / 2
