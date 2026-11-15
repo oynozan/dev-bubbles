@@ -11,6 +11,7 @@ import {
     indexFiles,
     indexLineages,
     indexNodes,
+    maxLabelSize,
     minLabelSize,
     openRadius,
     packTree,
@@ -365,12 +366,22 @@ describe('fitLabel', () => {
 
 describe('fitCenteredLabel', () => {
     it('keeps the label at least minLabelSize pixels on screen and truncates it to fit', () => {
-        expect(fitCenteredLabel('Server', 100, 1)).toEqual({ text: 'Server', fontSize: 30 })
-        expect(fitCenteredLabel('Server', 100, 0.2)).toEqual({ text: 'Serv…', fontSize: minLabelSize / 0.2 })
+        expect(fitCenteredLabel('Server', 100, 1)).toEqual({ lines: ['Server'], fontSize: 30 })
+        expect(fitCenteredLabel('Server', 100, 0.2)).toEqual({ lines: ['Serv…'], fontSize: minLabelSize / 0.2 })
+    })
+
+    it('keeps the label at most maxLabelSize pixels on screen', () => {
+        expect(fitCenteredLabel('Server', 100, 4)).toEqual({ lines: ['Server'], fontSize: maxLabelSize / 4 })
+    })
+
+    it('wraps a label onto two lines at the most even space before it truncates', () => {
+        expect(fitCenteredLabel('Commit History', 50, 1)).toEqual({ lines: ['Commit', 'History'], fontSize: 15 })
+        expect(fitCenteredLabel('Helpers and Config', 50, 1)).toEqual({ lines: ['Helpers', 'and Config'], fontSize: expect.closeTo(80 / 6) })
+        expect(fitCenteredLabel('Commit History', 25, 1)).toEqual({ lines: ['Commi…'], fontSize: minLabelSize })
     })
 
     it('drops the label when the bubble cannot hold a few characters on screen', () => {
         expect(fitCenteredLabel('Server', 100, 0.1)).toBeUndefined()
-        expect(fitCenteredLabel('UI', 100, 0.1)).toEqual({ text: 'UI', fontSize: minLabelSize / 0.1 })
+        expect(fitCenteredLabel('UI', 100, 0.1)).toEqual({ lines: ['UI'], fontSize: minLabelSize / 0.1 })
     })
 })

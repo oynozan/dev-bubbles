@@ -72,6 +72,11 @@ export type FittedLabel = {
     fontSize: number
 }
 
+export type FittedLines = {
+    lines: string[]
+    fontSize: number
+}
+
 type PackNode = TreeNode & {
     pinId?: string
     children?: PackNode[]
@@ -80,6 +85,8 @@ type PackNode = TreeNode & {
 export const openRadius = 60
 // In screen pixels, the same floor the stylesheet gives curved labels
 export const minLabelSize = 11
+// In screen pixels, the same ceiling the stylesheet gives curved labels, so a zoomed leaf keeps a name and not a poster
+export const maxLabelSize = 32
 
 const radiusPerSqrtLine = 2
 const newNodeSpread = 0.1
@@ -384,11 +391,32 @@ export const fitLabel = (label: string, room: number, maxFontSize: number, minFo
     return { text: truncateString(label, maxLength), fontSize }
 }
 
-// A closed or leaf label never shrinks below minLabelSize on screen, so a bubble too small for a few characters drops it
-export const fitCenteredLabel = (label: string, r: number, k: number): FittedLabel | undefined => {
-    const fitted = fitLabel(label, r * 1.8, r * 0.3, Math.max(r * 0.15, minLabelSize / k))
-    return fitted.text.length < Math.min(label.length, minLabelLength) ? undefined : fitted
+// A closed or leaf label keeps a readable size on screen and wraps before it truncates, so a bubble too small for a few characters drops it
+export const fitCenteredLabel = (label: string, r: number, k: number): FittedLines | undefined => {
+    const maxFontSize = keepBetween(minLabelSize / k, maxLabelSize / k, r * 0.3)
+    const minFontSize = keepBetween(minLabelSize / k, maxLabelSize / k, r * 0.15)
+    const oneLine = fitLabel(label, r * 1.8, maxFontSize, minFontSize)
+    if (oneLine.text === label) return { lines: [label], fontSize: oneLine.fontSize }
+    // Two lines sit off the centre, where the circle is narrower
+    const twoLines = wrapLabel(label, r * 1.6, maxFontSize, minFontSize)
+    if (twoLines) return twoLines
+    if (oneLine.text.length < Math.min(label.length, minLabelLength)) return undefined
+    return { lines: [oneLine.text], fontSize: oneLine.fontSize }
 }
+
+// Breaks at the space that keeps the longer line shortest
+const wrapLabel = (label: string, room: number, maxFontSize: number, minFontSize: number): FittedLines | undefined => {
+    let lines: string[] | undefined
+    for (let index = label.indexOf(' '); index !== -1; index = label.indexOf(' ', index + 1)) {
+        const split = [label.slice(0, index), label.slice(index + 1)]
+        if (!lines || longestLength(split) < longestLength(lines)) lines = split
+    }
+    if (!lines) return undefined
+    const fontSize = Math.min(maxFontSize, room / (longestLength(lines) * glyphWidth))
+    return fontSize >= minFontSize ? { lines, fontSize } : undefined
+}
+
+const longestLength = (lines: readonly string[]): number => Math.max(...lines.map((line) => line.length))
 
 // Color is reserved for status, so bubbles are grays that lighten with depth
 export const bubbleFill = ({ depth }: Pick<LayoutNode, 'depth'>): string => {

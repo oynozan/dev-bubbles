@@ -38,6 +38,7 @@ type HiddenMarksRingProps = {
     actions: BubbleActions
 }
 
+const labelLineHeight = 1.2
 const badgeHeight = 16
 const badgeDigitWidth = 6.5
 const maxBadgeCount = 99
@@ -107,15 +108,19 @@ const CurvedLabel = ({ node }: LabelProps) => {
 const CenteredLabel = ({ node, scale }: CenteredLabelProps) => {
     const fitted = fitCenteredLabel(node.label, node.r, scale)
     if (!fitted) return null
+    const { lines, fontSize } = fitted
+    const firstLineShift = (-labelLineHeight * (lines.length - 1)) / 2
 
     return (
         <text
             className="label"
-            fontSize={fitted.fontSize}
+            fontSize={fontSize}
             textAnchor="middle"
             dominantBaseline="central"
         >
-            {fitted.text}
+            {lines.map((line, index) => (
+                <tspan key={index} x={0} dy={`${index ? labelLineHeight : firstLineShift}em`}>{line}</tspan>
+            ))}
         </text>
     )
 }
