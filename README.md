@@ -1,139 +1,50 @@
-# Repo Visualizer
+# Dev Bubbles
 
-A GitHub Action that creates an SVG diagram of your repo. Read more [in the writeup](https://octo.github.com/projects/repo-visualization).
+A local, live bubble map of a git repository. Folders and files are drawn as nested circles, sized by how big they are and colored by language.
 
-**Please note that this is an experiment. If you have feature requests, please submit a PR or fork and use the code any way you need.**
+Where it is headed: your coding agent (Claude Code, for example) groups the code into human-readable components, imports and HTTP calls are drawn as edges, and when you report a bug the agent marks the components that could be involved. See [PLAN.md](PLAN.md) for the full roadmap.
 
-For a full demo, check out the [githubocto/repo-visualizer-demo](https://github.com/githubocto/repo-visualizer-demo) repository.
+> **Status:** early. Phase 0 is done, which means a static circle pack of a repo served by a local Node process. Live updates, zoom and drag, components, edges and bug marks come in the next phases.
 
-## Inputs
+## Quick start
 
-### `output_file`
+Requires Node.js 22.12 or newer and git.
 
-A path (relative to the root of your repo) to where you would like the diagram to live.
-
-For example: images/diagram.svg
-
-Default: diagram.svg
-
-### `excluded_paths`
-
-A list of paths to folders to exclude from the diagram, separated by commas.
-
-For example: dist,node_modules
-
-Default: node_modules,bower_components,dist,out,build,eject,.next,.netlify,.yarn,.vscode,package-lock.json,yarn.lock
-
-### `excluded_globs`
-
-A semicolon-delimited array of file [globs](https://globster.xyz/) to exclude from the diagram, using [micromatch](https://github.com/micromatch/micromatch) syntax. Provided as an array.
-
-For example:
-
-```yaml
-excluded_globs: "frontend/*.spec.js;**/*.{png,jpg};**/!(*.module).ts"
-# Guide:
-# - 'frontend/*.spec.js' # exclude frontend tests
-# - '**/*.{png,ico,md}'  # all png, ico, md files in any directory
-# - '**/!(*.module).ts'  # all TS files except module files
+```sh
+git clone <this repo> dev-bubbles
+cd dev-bubbles
+npm install
+npm run build
+npm start -- --repo /path/to/your/repo
 ```
 
-### `root_path`
+Then open the printed URL (default `http://127.0.0.1:4747`). The server only listens on `127.0.0.1`.
 
-The directory (and its children) that you want to visualize in the diagram, relative to the repository root.
+| Option | Default | |
+| --- | --- | --- |
+| `--repo <path>` | current directory | Repository to map |
+| `--port <n>` | `4747` | Port to listen on |
 
-For example: `src/`
+## Development
 
-Default: `''` (current directory)
-
-### `max_depth`
-
-The maximum number of nested folders to show files within. A higher number will take longer to render.
-
-Default: 9
-
-### `should_push`
-
-Whether to make a new commit with the diagram and push it to the original repository.
-
-Should be a boolean value, i.e. `true` or `false`. See `commit_message` and `branch` for how to customise the commit.
-
-Default: `true`
-
-### `commit_message`
-
-The commit message to use when updating the diagram. Useful for skipping CI. For example: `Updating diagram [skip ci]`
-
-Default: `Repo visualizer: updated diagram`
-
-### `branch`
-
-The branch name to push the diagram to (branch will be created if it does not yet exist).
-
-For example: `diagram`
-
-### `artifact_name`
-
-The name of an [artifact](https://docs.github.com/en/actions/guides/storing-workflow-data-as-artifacts) to create containing the diagram.
-
-If unspecified, no artifact will be created.
-
-Default: `''` (no artifact)
-
-### `file_colors`
-
-You can customize the colors for specific file extensions. Key/value pairs will extend the [default colors](https://github.com/githubocto/repo-visualizer/pull/src/language-colors.json).
-
-For example: '{"js": "red","ts": "green"}'
-default: '{}'
-
-## Outputs
-
-### `svg`
-
-The contents of the diagram as text. This can be used if you don't want to handle new files.
-
-## Example usage
-
-You'll need to run the `actions/checkout` Action beforehand, to check out the code.
-
-```yaml
-- name: Checkout code
-  uses: actions/checkout@master
-- name: Update diagram
-  uses: githubocto/repo-visualizer@0.7.1
-  with:
-    output_file: "images/diagram.svg"
-    excluded_paths: "dist,node_modules"
+```sh
+npm run dev          # server (tsx watch) + Vite dev server on http://localhost:5173
+npm test             # vitest
+npm run typecheck    # tsc --noEmit
+npm run fixture      # copies fixtures/sample-app into a temp git repo and prints its path
 ```
 
+`npm run dev` maps the Dev Bubbles repo itself. To map another repo, set `DEV_BUBBLES_REPO`:
 
-## Accessing the diagram
-
-By default, this action will create a new commit with the diagram on the specified branch.
-
-If you want to avoid new commits, you can create an artifact to accompany the workflow run,
-by specifying an `artifact_name`. You can then download the diagram using the
-[`actions/download-artifact`](https://github.com/marketplace/actions/download-a-build-artifact)
-action from a later step in your workflow,
-or by using the [GitHub API](https://docs.github.com/en/rest/reference/actions#artifacts).
-
-Example:
-```yaml
-- name: Update diagram
-  id: make_diagram
-  uses: githubocto/repo-visualizer@0.7.1
-  with:
-    output_file: "output-diagram.svg"
-    artifact_name: "my-diagram"
-- name: Get artifact
-  uses: actions/download-artifact@v2
-  with:
-    name: "my-diagram"
-    path: "downloads"
+```sh
+DEV_BUBBLES_REPO=/path/to/repo npm run dev            # bash
+$env:DEV_BUBBLES_REPO = "C:\path\to\repo"; npm run dev  # PowerShell
 ```
-In this example, the diagram will be available at downloads/my-diagram.svg
-Note that this will still also create a commit, unless you specify `should_push: false`!
 
-Alternatively, the SVG description of the diagram is available in the `svg` output,
-which you can refer to in your workflow as e.g. `${{ steps.make_diagram.outputs.svg }}`.
+## Credits
+
+Dev Bubbles started as a fork of [githubocto/repo-visualizer](https://github.com/githubocto/repo-visualizer) by GitHub OCTO. The circle packing and rendering come from that project.
+
+## License
+
+[MIT](LICENSE)
