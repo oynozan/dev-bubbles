@@ -74,6 +74,21 @@ const DetailsWindowNode = ({ node, index, onSelect, onClose }: DetailsWindowProp
         return () => window.removeEventListener('keydown', closeOnEscape, true)
     }, [onClose])
 
+    // Focus that closed with the window goes back where it came from, focus in another panel stays put
+    useEffect(() => {
+        const opener = document.activeElement
+        return () => {
+            const isFocusLost = !document.activeElement || document.activeElement === document.body
+            if (isFocusLost && opener instanceof HTMLElement && opener.isConnected) opener.focus()
+        }
+    }, [])
+
+    // A new bubble replaces the focused connection, so focus moves to the window instead of falling to the page
+    useEffect(() => {
+        const element = windowRef.current
+        if (element && !element.contains(document.activeElement)) element.focus()
+    }, [node.id])
+
     useEffect(() => {
         const element = windowRef.current
         if (!element) return
@@ -114,7 +129,7 @@ const DetailsWindowNode = ({ node, index, onSelect, onClose }: DetailsWindowProp
     }
 
     return (
-        <section ref={windowRef} className="details-window" role="dialog" aria-labelledby={titleId}>
+        <section ref={windowRef} className="details-window" role="dialog" aria-labelledby={titleId} tabIndex={-1}>
             <header onPointerDown={startDrag} onPointerMove={drag} onPointerUp={endDrag} onPointerCancel={endDrag}>
                 <div className="details-heading">
                     <h2 id={titleId}>{bubbleName(node)}</h2>
