@@ -98,7 +98,7 @@ async function handleRequest(context: RequestContext, request: IncomingMessage, 
         if (request.method === 'GET') context.events.open(response)
         else sendMethodNotAllowed(response, 'GET')
     } else if (pathname === '/api/snapshot') {
-        if (request.method === 'GET') await sendCommitSnapshot(context, request.url ?? '/', response)
+        if (request.method === 'GET') await sendCommitSnapshot(context, request, response)
         else sendMethodNotAllowed(response, 'GET')
     } else if (request.method === 'GET' || request.method === 'HEAD') {
         serveStatic(pathname, response)
@@ -204,8 +204,14 @@ function parseJson(text: string): unknown {
 
 /* Past commits */
 
-async function sendCommitSnapshot(context: RequestContext, url: string, response: ServerResponse): Promise<void> {
-    const commit = new URL(url, 'http://127.0.0.1').searchParams.get('commit') ?? ''
+async function sendCommitSnapshot(context: RequestContext, request: IncomingMessage, response: ServerResponse): Promise<void> {
+    // A page on another site can send this GET too, and each one checks out and parses a whole commit
+    const fetchSite = request.headers['sec-fetch-site']
+    if (fetchSite === 'cross-site' || fetchSite === 'same-site') {
+        sendText(response, 403, 'Forbidden cross-site request')
+        return
+    }
+    const commit = new URL(request.url ?? '/', 'http://127.0.0.1').searchParams.get('commit') ?? ''
     if (!commitPattern.test(commit)) {
         sendText(response, 400, 'Expected ?commit=<sha> with 4 to 64 hex digits')
         return

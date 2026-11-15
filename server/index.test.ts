@@ -177,6 +177,11 @@ describe('startServer', () => {
         })
         expect(status).toBe(403)
     })
+
+    it.each(['cross-site', 'same-site'])('rejects a %s request for a past commit', async (site) => {
+        const response = await fetch(`${baseUrl}/api/snapshot?commit=abcd`, { headers: { 'Sec-Fetch-Site': site } })
+        expect(response.status).toBe(403)
+    })
 })
 
 describe('startServer history', () => {
