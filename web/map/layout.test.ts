@@ -103,6 +103,22 @@ describe('syncBubbles', () => {
         expect(changedGroups).toEqual(new Set([dirId('src/api'), dirId('src'), ROOT_ID]))
     })
 
+    it('gives a group with no surviving members its packed layout', () => {
+        const bubbles = syncedBubbles(packTree(sampleTree()))
+        const regrouped = packTree(dir('', [
+            ...sampleTree().children ?? [],
+            { id: 'docs', kind: 'component', label: 'Docs', children: files('docs', 3) },
+        ]))
+        const changedGroups = syncBubbles(bubbles, regrouped, {})
+        const docs = indexNodes(regrouped).get('docs')!
+
+        for (const child of docs.children ?? []) {
+            expect(bubbles.get(child.id)).toMatchObject({ x: child.x, y: child.y })
+        }
+        expect(distanceFromCentre(bubbles.get('docs')!)).toBeLessThan(regrouped.r * 0.2)
+        expect(changedGroups.has('docs')).toBe(false)
+    })
+
     it('drops nodes that left the tree and reheats their group', () => {
         const bubbles = syncedBubbles(packTree(sampleTree(1)))
         const changedGroups = syncBubbles(bubbles, packTree(sampleTree()), {})

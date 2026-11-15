@@ -138,25 +138,26 @@ export const syncBubbles = (
     const changedGroups = new Set<string>()
     const seen = new Set<string>()
 
-    const visit = (node: LayoutNode, parentId: string, isParentNew: boolean): void => {
+    const visit = (node: LayoutNode, parentId: string, isFreshGroup: boolean): void => {
         seen.add(node.id)
         const previous = bubbles.get(node.id)
         const bubble = previous && previous.parentId === parentId
             ? previous
-            : newBubble(node, parentId, isParentNew)
+            : newBubble(node, parentId, isFreshGroup)
         const isNew = bubble !== previous
         const isResized = Math.abs(bubble.r - node.r) > radiusTolerance
         const isPinMoved = applyPin(bubble, pins[node.id])
         bubble.r = node.r
         bubble.isGroup = !!node.children?.length
         bubbles.set(node.id, bubble)
-        // Pack places the children of a new group without overlaps, so they need no reheat
-        if (isResized || isPinMoved || (isNew && !isParentNew)) changedGroups.add(parentId)
+        // Pack places a fresh group without overlaps, so it needs no reheat
+        if (isResized || isPinMoved || (isNew && !isFreshGroup)) changedGroups.add(parentId)
         if (isNew && previous) changedGroups.add(previous.parentId)
-        for (const child of node.children ?? []) visit(child, node.id, isNew)
+        const hasSurvivors = node.children?.some((child) => bubbles.get(child.id)?.parentId === node.id)
+        for (const child of node.children ?? []) visit(child, node.id, !hasSurvivors)
     }
 
-    visit(root, '', !bubbles.has(root.id))
+    visit(root, '', true)
     for (const [id, bubble] of bubbles) {
         if (seen.has(id)) continue
         bubbles.delete(id)
@@ -165,8 +166,9 @@ export const syncBubbles = (
     return new Set([...changedGroups].filter((id) => seen.has(id)))
 }
 
-const newBubble = (node: LayoutNode, parentId: string, isParentNew: boolean): BubbleState => {
-    const spread = isParentNew ? 1 : newNodeSpread
+// A group with no surviving members takes the packed layout, otherwise newcomers start near its centre
+const newBubble = (node: LayoutNode, parentId: string, isFreshGroup: boolean): BubbleState => {
+    const spread = isFreshGroup ? 1 : newNodeSpread
     return { id: node.id, parentId, r: node.r, isGroup: false, x: node.x * spread, y: node.y * spread }
 }
 
