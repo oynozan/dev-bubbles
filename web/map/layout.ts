@@ -78,12 +78,15 @@ type PackNode = TreeNode & {
 }
 
 export const openRadius = 60
+// In screen pixels, the same floor the stylesheet gives curved labels
+export const minLabelSize = 11
 
 const radiusPerSqrtLine = 2
 const newNodeSpread = 0.1
 const radiusTolerance = 1e-6
 const fitShare = 0.9
 const glyphWidth = 0.6
+const minLabelLength = 4
 const rootLightness = 14
 const depthLightnessStep = 3
 
@@ -373,12 +376,18 @@ export const hasVisibleLabel = ({ kind, depth }: Pick<LayoutNode, 'kind' | 'dept
     return kind === 'component' || depth === 0
 }
 
-// Long labels shrink down to half the font size before they are truncated
-export const fitLabel = (label: string, room: number, maxFontSize: number): FittedLabel => {
-    const fontSize = keepBetween(maxFontSize / 2, maxFontSize, room / (label.length * glyphWidth))
+// Long labels shrink down to the minimum, by default half the font size, before they are truncated
+export const fitLabel = (label: string, room: number, maxFontSize: number, minFontSize = maxFontSize / 2): FittedLabel => {
+    const fontSize = keepBetween(minFontSize, maxFontSize, room / (label.length * glyphWidth))
     // The epsilon keeps a label that fits exactly from losing its last character to rounding
     const maxLength = Math.floor(room / (fontSize * glyphWidth) + 1e-9)
     return { text: truncateString(label, maxLength), fontSize }
+}
+
+// A closed or leaf label never shrinks below minLabelSize on screen, so a bubble too small for a few characters drops it
+export const fitCenteredLabel = (label: string, r: number, k: number): FittedLabel | undefined => {
+    const fitted = fitLabel(label, r * 1.8, r * 0.3, Math.max(r * 0.15, minLabelSize / k))
+    return fitted.text.length < Math.min(label.length, minLabelLength) ? undefined : fitted
 }
 
 // Color is reserved for status, so bubbles are grays that lighten with depth

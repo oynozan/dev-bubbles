@@ -5,11 +5,13 @@ import type { Point } from '../lib/utils.ts'
 import {
     absolutePosition,
     findOpenIds,
+    fitCenteredLabel,
     fitLabel,
     forceContain,
     indexFiles,
     indexLineages,
     indexNodes,
+    minLabelSize,
     openRadius,
     packTree,
     syncBubbles,
@@ -358,5 +360,17 @@ describe('fitLabel', () => {
 
         expect(longLabel.fontSize).toBe(10)
         expect(longLabel.text).toBe('a-really-…')
+    })
+})
+
+describe('fitCenteredLabel', () => {
+    it('keeps the label at least minLabelSize pixels on screen and truncates it to fit', () => {
+        expect(fitCenteredLabel('Server', 100, 1)).toEqual({ text: 'Server', fontSize: 30 })
+        expect(fitCenteredLabel('Server', 100, 0.2)).toEqual({ text: 'Serv…', fontSize: minLabelSize / 0.2 })
+    })
+
+    it('drops the label when the bubble cannot hold a few characters on screen', () => {
+        expect(fitCenteredLabel('Server', 100, 0.1)).toBeUndefined()
+        expect(fitCenteredLabel('UI', 100, 0.1)).toEqual({ text: 'UI', fontSize: minLabelSize / 0.1 })
     })
 })

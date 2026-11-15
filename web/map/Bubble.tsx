@@ -1,7 +1,7 @@
 import { memo, useCallback } from 'react'
 import type { CSSProperties, MouseEvent, ReactElement } from 'react'
 import { CircleText } from './CircleText.tsx'
-import { bubbleFill, bubbleName, describeSize, fitLabel, hasVisibleLabel } from './layout.ts'
+import { bubbleFill, bubbleName, describeSize, fitCenteredLabel, fitLabel, hasVisibleLabel } from './layout.ts'
 import type { LayoutNode } from './layout.ts'
 import type { HiddenMarks, NodeMark } from './marks.ts'
 import { mapStripesId, MarkCircle } from './patterns.tsx'
@@ -18,11 +18,17 @@ type BubbleProps = {
     openIds: ReadonlySet<string>
     marks: ReadonlyMap<string, NodeMark>
     hiddenMarks: ReadonlyMap<string, HiddenMarks>
+    // The zoom factor as of the last zoom end, which sizes the centered labels
+    scale: number
     actions: BubbleActions
 }
 
 type LabelProps = {
     node: LayoutNode
+}
+
+type CenteredLabelProps = LabelProps & {
+    scale: number
 }
 
 type HiddenMarksRingProps = {
@@ -35,7 +41,7 @@ const badgeHeight = 16
 const badgeDigitWidth = 6.5
 const maxBadgeCount = 99
 
-const BubbleNode = ({ node, openIds, marks, hiddenMarks, actions }: BubbleProps): ReactElement => {
+const BubbleNode = ({ node, openIds, marks, hiddenMarks, scale, actions }: BubbleProps): ReactElement => {
     const { id, r } = node
     const isOpen = openIds.has(id)
     const mark = marks.get(id)
@@ -67,10 +73,11 @@ const BubbleNode = ({ node, openIds, marks, hiddenMarks, actions }: BubbleProps)
                     openIds={openIds}
                     marks={marks}
                     hiddenMarks={hiddenMarks}
+                    scale={scale}
                     actions={actions}
                 />
             ))}
-            {hasVisibleLabel(node) && (isOpen ? <CurvedLabel node={node} /> : <CenteredLabel node={node} />)}
+            {hasVisibleLabel(node) && (isOpen ? <CurvedLabel node={node} /> : <CenteredLabel node={node} scale={scale} />)}
             {hidden && <HiddenMarksRing r={r} hidden={hidden} actions={actions} />}
         </g>
     )
@@ -94,17 +101,18 @@ const CurvedLabel = ({ node }: LabelProps) => {
     )
 }
 
-const CenteredLabel = ({ node }: LabelProps) => {
-    const { text, fontSize } = fitLabel(node.label, node.r * 1.8, node.r * 0.3)
+const CenteredLabel = ({ node, scale }: CenteredLabelProps) => {
+    const fitted = fitCenteredLabel(node.label, node.r, scale)
+    if (!fitted) return null
 
     return (
         <text
             className="label"
-            fontSize={fontSize}
+            fontSize={fitted.fontSize}
             textAnchor="middle"
             dominantBaseline="central"
         >
-            {text}
+            {fitted.text}
         </text>
     )
 }

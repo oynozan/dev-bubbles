@@ -45,6 +45,13 @@ type BubbleMapProps = {
     snapshot: Snapshot
 }
 
+// The React state the controller sets, never once per simulation tick
+type MapUi = {
+    setOpenIds: (openIds: ReadonlySet<string>) => void
+    setFocusId: (id: string) => void
+    setScale: (k: number) => void
+}
+
 type GroupSimulation = Simulation<BubbleState, undefined>
 type BubbleDragEvent = D3DragEvent<SVGGElement, unknown, SubjectPosition>
 
@@ -62,8 +69,9 @@ export const BubbleMap = ({ snapshot }: BubbleMapProps) => {
     const stripesRef = useRef<SVGPatternElement>(null)
     const [openIds, setOpenIds] = useState<ReadonlySet<string>>(() => new Set([ROOT_ID]))
     const [focusId, setFocusId] = useState(ROOT_ID)
+    const [scale, setScale] = useState(1)
     const [selectedBugId, setSelectedBugId] = useState<string>()
-    const [controller] = useState(() => new MapController(setOpenIds, setFocusId))
+    const [controller] = useState(() => new MapController({ setOpenIds, setFocusId, setScale }))
     const tree = useMemo(() => packTree(snapshot.root), [snapshot.root])
     const nodesById = useMemo(() => indexNodes(tree), [tree])
     const lineages = useMemo(() => indexLineages(tree), [tree])
@@ -107,6 +115,7 @@ export const BubbleMap = ({ snapshot }: BubbleMapProps) => {
                                 openIds={openIds}
                                 marks={marks}
                                 hiddenMarks={hiddenMarks}
+                                scale={scale}
                                 actions={controller}
                             />
                         ))}
@@ -138,8 +147,7 @@ class MapController implements BubbleActions, EdgeActions {
     private readonly simulations = new Map<string, GroupSimulation>()
     private readonly dirtyGroups = new Set<string>()
     private readonly zoomBehavior = zoom<SVGSVGElement, unknown>()
-    private readonly showOpenIds: (openIds: ReadonlySet<string>) => void
-    private readonly showFocus: (id: string) => void
+    private readonly ui: MapUi
     private tree: LayoutNode | undefined
     private nodesById: ReadonlyMap<string, LayoutNode> = new Map()
     private lineages: Lineages = new Map()
@@ -152,9 +160,8 @@ class MapController implements BubbleActions, EdgeActions {
     private hoveredId: string | undefined
     private isEdgeDrawQueued = false
 
-    constructor(showOpenIds: (openIds: ReadonlySet<string>) => void, showFocus: (id: string) => void) {
-        this.showOpenIds = showOpenIds
-        this.showFocus = showFocus
+    constructor(ui: MapUi) {
+        this.ui = ui
     }
 
     attach(svg: SVGSVGElement, layer: SVGGElement, stripes: SVGPatternElement): () => void {
@@ -177,6 +184,7 @@ class MapController implements BubbleActions, EdgeActions {
                 svg.classList.remove('zooming')
                 // Labels are hidden while scaling, so restyling them once at the end is enough
                 svg.style.setProperty('--zoom', String(this.view.k))
+                this.ui.setScale(this.view.k)
             })
         select(svg).call(this.zoomBehavior).on('dblclick.zoom', null)
         const resizeObserver = new ResizeObserver(() => {
@@ -263,7 +271,7 @@ class MapController implements BubbleActions, EdgeActions {
     private animateZoom(transform: ZoomTransform, focusId: string): void {
         if (!this.svg) return
         select(this.svg).transition().duration(zoomDuration).call(this.zoomBehavior.transform, transform)
-        this.showFocus(focusId)
+        this.ui.setFocusId(focusId)
     }
 
     // Stripes and badges keep their size on screen at every zoom
@@ -300,7 +308,7 @@ class MapController implements BubbleActions, EdgeActions {
         const openIds = findOpenIds(this.tree, this.bubbles, { x, y, k, ...this.size })
         if (haveSameIds(openIds, this.openIds)) return false
         this.openIds = openIds
-        this.showOpenIds(openIds)
+        this.ui.setOpenIds(openIds)
         return true
     }
 
