@@ -8,7 +8,6 @@
 import { hierarchy, pack } from 'd3'
 import type { Force, HierarchyCircularNode, SimulationNodeDatum } from 'd3'
 import type { NodeKind, Pin, TreeNode } from '../../shared/schema.ts'
-import languageColors from '../lib/language-colors.json'
 import { keepBetween, keepCircleInsideCircle, truncateString } from '../lib/utils.ts'
 import type { Point } from '../lib/utils.ts'
 
@@ -19,6 +18,7 @@ export type LayoutNode = {
     kind: NodeKind
     label: string
     path?: string
+    loc?: number
     depth: number
     r: number
     x: number
@@ -60,14 +60,15 @@ type PackNode = TreeNode & {
 }
 
 export const openRadius = 60
-export const fileColors = new Map<string, string>(Object.entries(languageColors))
 
 const radiusPerSqrtLine = 2
-const fallbackColor = '#CED6E0'
 const newNodeSpread = 0.1
 const radiusTolerance = 1e-6
 const fitShare = 0.9
 const glyphWidth = 0.6
+const rootLightness = 14
+const depthLightnessStep = 3
+const fileLightnessLift = 5
 
 /* Packing */
 
@@ -97,7 +98,7 @@ const collapseChains = (node: TreeNode, isRoot: boolean): PackNode => {
 }
 
 const toLayoutNode = (node: HierarchyCircularNode<PackNode>): LayoutNode => {
-    const { id, pinId = id, kind, label, path } = node.data
+    const { id, pinId = id, kind, label, path, loc } = node.data
     const parent = node.parent
     return {
         id,
@@ -105,6 +106,7 @@ const toLayoutNode = (node: HierarchyCircularNode<PackNode>): LayoutNode => {
         kind,
         label,
         path,
+        loc,
         depth: node.depth,
         r: node.r,
         x: parent ? node.x - parent.x : 0,
@@ -299,22 +301,10 @@ export const fitLabel = (label: string, room: number, maxFontSize: number): Fitt
     return { text: truncateString(label, maxLength), fontSize }
 }
 
-export const extensionOf = (path: string): string => {
-    const name = path.slice(path.lastIndexOf('/') + 1)
-    const dot = name.lastIndexOf('.')
-    return dot > 0 ? name.slice(dot + 1).toLowerCase() : ''
+// Color is reserved for status, so groups are grays that lighten with depth and files a step lighter than their group
+export const bubbleFill = ({ kind, depth }: Pick<LayoutNode, 'kind' | 'depth'>): string => {
+    const lightness = kind === 'file' ? groupLightness(depth - 1) + fileLightnessLift : groupLightness(depth)
+    return `hsl(0, 0%, ${lightness}%)`
 }
 
-export const fileColor = (path: string): string => fileColors.get(extensionOf(path)) ?? fallbackColor
-
-export const groupFill = (depth: number): string => `hsl(220, 14%, ${98 - Math.min(depth, 6) * 2.5}%)`
-
-export const listFileTypes = (root: TreeNode): string[] => {
-    const extensions = new Set<string>()
-    const visit = (node: TreeNode): void => {
-        if (node.kind === 'file') extensions.add(extensionOf(node.path ?? node.label))
-        node.children?.forEach(visit)
-    }
-    visit(root)
-    return [...extensions].filter((extension) => fileColors.has(extension)).sort()
-}
+const groupLightness = (depth: number): number => rootLightness + Math.min(depth, 6) * depthLightnessStep

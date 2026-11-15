@@ -1,7 +1,7 @@
 import { memo, useCallback } from 'react'
 import type { MouseEvent, ReactElement } from 'react'
 import { CircleText } from './CircleText.tsx'
-import { fileColor, fitLabel, groupFill } from './layout.ts'
+import { bubbleFill, fitLabel } from './layout.ts'
 import type { LayoutNode } from './layout.ts'
 
 export type BubbleActions = {
@@ -42,19 +42,25 @@ const BubbleNode = ({ node, openIds, actions }: BubbleProps): ReactElement => {
 
     return (
         <g ref={register} className="bubble" onClick={zoomOnClick} onDoubleClick={unpinOnDoubleClick}>
-            <title>{node.path ? `${node.label}\n${node.path}` : node.label}</title>
-            {kind === 'file'
-                ? <circle r={r} fill={fileColor(node.path ?? node.label)} />
-                : <circle r={r} fill={groupFill(node.depth)} className="group" />}
+            <title>{tooltipOf(node)}</title>
+            <circle r={r} fill={bubbleFill(node)} className={kind === 'file' ? undefined : 'group'} />
             {isOpen && node.children?.map((child) => (
                 <Bubble key={child.id} node={child} openIds={openIds} actions={actions} />
             ))}
-            {isOpen ? <CurvedLabel node={node} /> : <CenteredLabel node={node} />}
+            {hasVisibleLabel(node) && (isOpen ? <CurvedLabel node={node} /> : <CenteredLabel node={node} />)}
         </g>
     )
 }
 
 export const Bubble = memo(BubbleNode)
+
+// The coding agent names components, so file and folder names stay in the tooltip
+const hasVisibleLabel = ({ kind, depth }: LayoutNode): boolean => kind === 'component' || depth === 0
+
+const tooltipOf = ({ label, path, loc }: LayoutNode): string => {
+    const lineCount = loc === undefined ? '' : `${loc} ${loc === 1 ? 'line' : 'lines'}`
+    return [label, path, lineCount].filter(Boolean).join('\n')
+}
 
 const CurvedLabel = ({ node }: LabelProps) => {
     const { text, fontSize } = fitLabel(node.label, node.r * 2.2, node.r * 0.08)

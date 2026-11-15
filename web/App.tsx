@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { Snapshot } from '../shared/schema.ts'
+import type { Snapshot, TreeNode } from '../shared/schema.ts'
 import { BubbleMap } from './map/BubbleMap.tsx'
-import { listFileTypes } from './map/layout.ts'
 import { ErrorBanner } from './panels/ErrorBanner.tsx'
 import { Legend } from './panels/Legend.tsx'
 
@@ -22,18 +21,25 @@ const statusText: Record<Exclude<StreamStatus, 'live'>, string> = {
 export const App = () => {
     const { status, snapshot } = useSnapshotStream()
     const root = snapshot?.root
-    const fileTypes = useMemo(() => (root ? listFileTypes(root) : []), [root])
+    const hasNoComponents = useMemo(() => !!root && !hasComponent(root), [root])
 
     return (
         <div className="app">
             <ErrorBanner errors={snapshot?.errors ?? []} />
             <main className="map-area">
                 {snapshot && <BubbleMap snapshot={snapshot} />}
-                <Legend fileTypes={fileTypes} />
+                {hasNoComponents && (
+                    <p className="map-hint">No components yet. Run /map in your coding agent to name these bubbles.</p>
+                )}
+                <Legend />
                 {status !== 'live' && <p className="status-line" role="status">{statusText[status]}</p>}
             </main>
         </div>
     )
+}
+
+const hasComponent = (node: TreeNode): boolean => {
+    return node.kind === 'component' || !!node.children?.some(hasComponent)
 }
 
 const useSnapshotStream = (): SnapshotStream => {
