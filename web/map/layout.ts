@@ -31,6 +31,8 @@ export type BubbleState = SimulationNodeDatum & {
     isGroup: boolean
     x: number
     y: number
+    // The pin as saved, since containment may clamp fx and fy inside a shrunken parent
+    pin?: Pin
 }
 
 export type Size = {
@@ -173,13 +175,13 @@ const newBubble = (node: LayoutNode, parentId: string, isFreshGroup: boolean): B
 }
 
 const applyPin = (bubble: BubbleState, pin: Pin | undefined): boolean => {
-    const [fx, fy] = pin ?? [null, null]
-    if ((bubble.fx ?? null) === fx && (bubble.fy ?? null) === fy) return false
-    bubble.fx = fx
-    bubble.fy = fy
-    if (fx !== null && fy !== null) {
-        bubble.x = fx
-        bubble.y = fy
+    if (pin?.[0] === bubble.pin?.[0] && pin?.[1] === bubble.pin?.[1]) return false
+    bubble.pin = pin
+    bubble.fx = pin?.[0] ?? null
+    bubble.fy = pin?.[1] ?? null
+    if (pin) {
+        bubble.x = pin[0]
+        bubble.y = pin[1]
     }
     return true
 }

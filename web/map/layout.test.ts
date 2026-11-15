@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { dirId, fileId, ROOT_ID } from '../../shared/schema.ts'
-import type { TreeNode } from '../../shared/schema.ts'
+import type { Pin, TreeNode } from '../../shared/schema.ts'
 import { findOpenIds, fitLabel, forceContain, indexNodes, openRadius, packTree, syncBubbles } from './layout.ts'
 import type { BubbleState, LayoutNode, View } from './layout.ts'
 
@@ -138,6 +138,21 @@ describe('syncBubbles', () => {
 
         syncBubbles(bubbles, tree, {})
         expect(bubbles.get(dirId('web'))).toMatchObject({ x: 10, y: 20, fx: null, fy: null })
+    })
+
+    it('leaves a clamped pin alone until the saved pin changes', () => {
+        const tree = packTree(sampleTree())
+        const bubbles = syncedBubbles(tree)
+        const pins: Record<string, Pin> = { [dirId('web')]: [500, 0] }
+        syncBubbles(bubbles, tree, pins)
+        const web = bubbles.get(dirId('web'))!
+        web.x = 17
+        web.fx = 17
+
+        expect(syncBubbles(bubbles, tree, pins)).toEqual(new Set())
+        expect(web).toMatchObject({ x: 17, fx: 17 })
+        syncBubbles(bubbles, tree, { [dirId('web')]: [20, 0] })
+        expect(web).toMatchObject({ x: 20, fx: 20 })
     })
 
     it('applies pins to nodes that are new on load', () => {

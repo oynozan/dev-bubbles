@@ -156,6 +156,7 @@ class MapController implements BubbleActions {
         if (bubble?.fx == null) return
         bubble.fx = null
         bubble.fy = null
+        bubble.pin = undefined
         this.simulations.get(bubble.parentId)?.alpha(reheatAlpha).restart()
         savePin({ id, pin: null })
     }
@@ -262,7 +263,9 @@ class MapController implements BubbleActions {
                 const bubble = this.bubbles.get(id)
                 if (!isDragging || !bubble) return
                 this.simulations.get(bubble.parentId)?.alphaTarget(0)
-                if (bubble.fx != null && bubble.fy != null) savePin({ id, pin: [bubble.fx, bubble.fy] })
+                if (bubble.fx == null || bubble.fy == null) return
+                bubble.pin = [bubble.fx, bubble.fy]
+                savePin({ id, pin: bubble.pin })
             })
         select(element).call(dragBehavior)
     }
