@@ -1,60 +1,42 @@
-export const truncateString = (
-  string: string = "",
-  length: number = 20,
-): string => {
-  return string.length > length + 3
-    ? string.substring(0, length) + "..."
-    : string;
-};
+export type Point = [number, number]
 
-export const keepBetween = (min: number, max: number, value: number) => {
-  return Math.max(min, Math.min(max, value));
-};
+export const truncateString = (text: string, maxLength: number): string => {
+    return text.length > maxLength + 3 ? `${text.substring(0, maxLength)}...` : text
+}
 
-export const getPositionFromAngleAndDistance = (
-  angle: number,
-  distance: number,
-): [number, number] => {
-  const radians = angle / 180 * Math.PI;
-  return [
-    Math.cos(radians) * distance,
-    Math.sin(radians) * distance,
-  ];
-};
+export const keepBetween = (min: number, max: number, value: number): number => {
+    return Math.max(min, Math.min(max, value))
+}
 
-export const getAngleFromPosition = (x: number, y: number): number => {
-  return Math.atan2(y, x) * 180 / Math.PI;
-};
+const getPositionFromAngleAndDistance = (angle: number, distance: number): Point => {
+    const radians = (angle / 180) * Math.PI
+    return [Math.cos(radians) * distance, Math.sin(radians) * distance]
+}
+
+const getAngleFromPosition = (x: number, y: number): number => {
+    return (Math.atan2(y, x) * 180) / Math.PI
+}
 
 export const keepCircleInsideCircle = (
-  parentR: number,
-  parentPosition: [number, number],
-  childR: number,
-  childPosition: [number, number],
-  isParent: boolean = false,
-): [number, number] => {
-  const distance = Math.sqrt(
-    Math.pow(parentPosition[0] - childPosition[0], 2) +
-      Math.pow(parentPosition[1] - childPosition[1], 2),
-  );
-  const angle = getAngleFromPosition(
-    childPosition[0] - parentPosition[0],
-    childPosition[1] - parentPosition[1],
-  );
-  // leave space for labels
-  const padding = Math.min(
-    angle < -20 && angle > -100 && isParent ? 13 : 3,
-    parentR * 0.2,
-  );
-  if (distance > (parentR - childR - padding)) {
-    const diff = getPositionFromAngleAndDistance(
-      angle,
-      parentR - childR - padding,
-    );
-    return [
-      parentPosition[0] + diff[0],
-      parentPosition[1] + diff[1],
-    ];
-  }
-  return childPosition;
-};
+    parentR: number,
+    parentPosition: Point,
+    childR: number,
+    childPosition: Point,
+    isParent: boolean,
+): Point => {
+    const distance = Math.sqrt(
+        Math.pow(parentPosition[0] - childPosition[0], 2) +
+            Math.pow(parentPosition[1] - childPosition[1], 2),
+    )
+    const angle = getAngleFromPosition(
+        childPosition[0] - parentPosition[0],
+        childPosition[1] - parentPosition[1],
+    )
+    // Parents keep extra room near the top, where their curved label sits
+    const padding = Math.min(angle < -20 && angle > -100 && isParent ? 13 : 3, parentR * 0.2)
+    if (distance > parentR - childR - padding) {
+        const offset = getPositionFromAngleAndDistance(angle, parentR - childR - padding)
+        return [parentPosition[0] + offset[0], parentPosition[1] + offset[1]]
+    }
+    return childPosition
+}
