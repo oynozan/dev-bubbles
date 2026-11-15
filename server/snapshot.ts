@@ -7,7 +7,7 @@ import { resolveBugs } from './bugs.ts'
 import { buildTree, checkManifest, flattenTree } from './components.ts'
 import { createEdgeIndex } from './edges.ts'
 import { createInventory } from './inventory.ts'
-import { configDir, errorMessage, readJsonFile } from './json-file.ts'
+import { configDir, errorMessage, formatJson, readJsonFile } from './json-file.ts'
 
 export type SnapshotSource = {
     rescan(): Promise<Snapshot>
@@ -102,7 +102,7 @@ function createLastValidReader<T>(
 function writeJsonFile(filePath: string, value: unknown): void {
     fs.mkdirSync(path.dirname(filePath), { recursive: true })
     const tempPath = `${filePath}.${process.pid}.tmp`
-    fs.writeFileSync(tempPath, `${JSON.stringify(value, null, 4)}\n`)
+    fs.writeFileSync(tempPath, formatJson(value))
     fs.renameSync(tempPath, filePath)
 }
 

@@ -10,7 +10,7 @@ import type { UnmatchedCall } from '../server/edges.ts'
 import { startServer } from '../server/index.ts'
 import { compareStrings, createInventory, findRepoRoot } from '../server/inventory.ts'
 import type { InventoryFile } from '../server/inventory.ts'
-import { configDir, errorMessage, readJsonFile } from '../server/json-file.ts'
+import { configDir, errorMessage, formatJson, readJsonFile } from '../server/json-file.ts'
 import type { JsonFileResult } from '../server/json-file.ts'
 import { findPackageRoot } from '../server/package-root.ts'
 import { bugsFileSchema, fileId, manifestSchema, UNMAPPED_ID } from '../shared/schema.ts'
@@ -103,10 +103,6 @@ function init(repoRoot: string): void {
         `  1. Run dev-bubbles in ${repoRoot} to open the map`,
         '  2. Run /map in Claude Code to group the files into components',
     ].join('\n'))
-}
-
-function formatJson(value: unknown): string {
-    return `${JSON.stringify(value, null, 4)}\n`
 }
 
 function createFileOnce(repoRoot: string, relativePath: string, content: string | Buffer): void {

@@ -25,6 +25,11 @@ export function readJsonFile<T>(filePath: string, schema: z.ZodType<T>): JsonFil
     return { status: 'invalid', errors }
 }
 
+// Two spaces as the skill asks, so the agent and the tool never reindent each other's files
+export function formatJson(value: unknown): string {
+    return `${JSON.stringify(value, null, 2)}\n`
+}
+
 function formatJsonPath(keys: readonly PropertyKey[]): string {
     return keys.map((key, index) => {
         if (typeof key === 'number') return `[${key}]`
