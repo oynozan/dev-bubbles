@@ -26,12 +26,14 @@ const maxSourceBytes = 1024 * 1024
 
 export function createEdgeIndex(repoRoot: string): EdgeIndex {
     const rootDir = fs.realpathSync.native(repoRoot)
-    const resolver = new ResolverFactory({
-        tsconfig: 'auto',
+    const resolverOptions = {
         extensions: ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json'],
         extensionAlias: { '.js': ['.ts', '.tsx', '.js'], '.mjs': ['.mts', '.mjs'], '.cjs': ['.cts', '.cjs'] },
         conditionNames: ['types', 'import', 'require', 'node', 'default'],
-    })
+    }
+    const resolver = new ResolverFactory({ ...resolverOptions, tsconfig: 'auto' })
+    // A tsconfig that fails to load fails every lookup, so relative and package imports fall back to this one
+    const plainResolver = new ResolverFactory(resolverOptions)
     const cache = new Map<string, CachedFile>()
     let resolverInputs = ''
 
@@ -42,6 +44,7 @@ export function createEdgeIndex(repoRoot: string): EdgeIndex {
             .join('\n')
         if (inputs === resolverInputs) return
         resolver.clearCache()
+        plainResolver.clearCache()
         resolverInputs = inputs
         for (const cached of cache.values()) cached.importTargets = undefined
     }
@@ -59,7 +62,9 @@ export function createEdgeIndex(repoRoot: string): EdgeIndex {
     }
 
     function resolveImport(fromPath: string, specifier: string): string | undefined {
-        const resolved = resolver.resolveFileSync(path.join(rootDir, fromPath), specifier).path
+        const filePath = path.join(rootDir, fromPath)
+        const resolved = resolver.resolveFileSync(filePath, specifier).path
+            ?? plainResolver.resolveFileSync(filePath, specifier).path
         if (!resolved) return undefined
         const relative = path.relative(rootDir, resolved)
         const segments = relative.split(path.sep)

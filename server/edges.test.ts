@@ -153,5 +153,8 @@ describe('createEdgeIndex updates', () => {
 
         writeFile(repo, 'tsconfig.json', '{ "compilerOptions": { "strict": true } }\n')
         expect(importTargets(update().edges, 'src/api/routes/billing.ts')).toEqual(['src/auth/session.ts'])
+
+        writeFile(repo, 'tsconfig.json', '{ "extends": "@tsconfig/missing/tsconfig.json" }\n')
+        expect(importTargets(update().edges, 'src/api/routes/billing.ts')).toEqual(['src/auth/session.ts'])
     })
 })
