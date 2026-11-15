@@ -70,6 +70,13 @@ describe('markNodes', () => {
         expect(dimmedIds('b2')).toEqual([app])
         expect(dimmedIds('b1')).toEqual([invoice])
     })
+
+    it('draws a node in the state the selected bug gave it, whatever the dimmed bugs say', () => {
+        const bugs = [bug('b1', [[billing, 'confirmed']]), bug('b2', [[billing, 'suspected']])]
+
+        expect(markNodes(bugs, 'b2').get(billing)).toEqual({ state: 'suspected', isDimmed: false })
+        expect(markNodes(bugs, 'b1').get(billing)).toEqual({ state: 'confirmed', isDimmed: false })
+    })
 })
 
 describe('rollUpHiddenMarks', () => {

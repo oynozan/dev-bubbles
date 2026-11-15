@@ -21,20 +21,20 @@ export type MarkFit = {
     focusId: string
 }
 
-// Confirmed wins when several open bugs mark one node
 export const markNodes = (bugs: readonly SnapshotBug[], selectedBugId: string | undefined): Map<string, NodeMark> => {
     const marks = new Map<string, NodeMark>()
     for (const bug of bugs) {
         const isDimmed = selectedBugId !== undefined && bug.id !== selectedBugId
-        for (const { nodeId, state } of bug.marks) {
-            const previous = marks.get(nodeId)
-            marks.set(nodeId, {
-                state: previous?.state === 'confirmed' ? 'confirmed' : state,
-                isDimmed: (previous?.isDimmed ?? true) && isDimmed,
-            })
-        }
+        for (const { nodeId, state } of bug.marks) marks.set(nodeId, mergeMark(marks.get(nodeId), { state, isDimmed }))
     }
     return marks
+}
+
+// The selected bug's marks win over dimmed ones, and among equals confirmed wins
+const mergeMark = (previous: NodeMark | undefined, mark: NodeMark): NodeMark => {
+    if (!previous || (previous.isDimmed && !mark.isDimmed)) return mark
+    if (mark.isDimmed && !previous.isDimmed) return previous
+    return { state: previous.state === 'confirmed' ? 'confirmed' : mark.state, isDimmed: mark.isDimmed }
 }
 
 // A mark inside a closed group shows on the drawn group, which counts the selected bug's marks ahead of dimmed ones
@@ -54,10 +54,9 @@ export const rollUpHiddenMarks = (
 }
 
 const addHiddenMark = (rollUp: HiddenMarks | undefined, mark: NodeMark): HiddenMarks => {
-    if (!rollUp || (rollUp.isDimmed && !mark.isDimmed)) return { ...mark, count: 1 }
-    if (mark.isDimmed && !rollUp.isDimmed) return rollUp
-    const state = rollUp.state === 'confirmed' ? 'confirmed' : mark.state
-    return { state, isDimmed: rollUp.isDimmed, count: rollUp.count + 1 }
+    const { state, isDimmed } = mergeMark(rollUp, mark)
+    const count = (rollUp?.isDimmed === isDimmed ? rollUp.count : 0) + (mark.isDimmed === isDimmed ? 1 : 0)
+    return { state, isDimmed, count }
 }
 
 // The smallest circle around the marked bubbles, focused on the deepest node that holds them all
