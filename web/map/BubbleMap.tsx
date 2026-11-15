@@ -130,11 +130,10 @@ export const BubbleMap = ({ snapshot }: BubbleMapProps) => {
                 </defs>
                 <g ref={layerRef}>
                     <g className="bubbles">
-                        {/* The repo draws no bubble of its own unless it holds nothing but files */}
-                        {(tree.children ?? [tree]).map((node) => (
+                        {tree.children?.map((child) => (
                             <Bubble
-                                key={node.id}
-                                node={node}
+                                key={child.id}
+                                node={child}
                                 openIds={openIds}
                                 marks={marks}
                                 hiddenMarks={hiddenMarks}
