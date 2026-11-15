@@ -87,7 +87,7 @@ class MapController implements BubbleActions {
     private view: ZoomTransform = zoomIdentity
     private size: Size = { width: 0, height: 0 }
     private svg: SVGSVGElement | undefined
-    private hasFittedRoot = false
+    private lastRootFit: ZoomTransform | undefined
 
     constructor(showOpenIds: (openIds: ReadonlySet<string>) => void, showFocus: (id: string) => void) {
         this.showOpenIds = showOpenIds
@@ -147,6 +147,7 @@ class MapController implements BubbleActions {
         const node = this.nodesById.get(id)
         if (!node || !this.svg) return
         const transform = toZoomTransform(absolutePosition(this.bubbles, id), node.r, this.size)
+        if (id === ROOT_ID) this.lastRootFit = transform
         select(this.svg).transition().duration(zoomDuration).call(this.zoomBehavior.transform, transform)
         this.showFocus(id)
     }
@@ -161,13 +162,15 @@ class MapController implements BubbleActions {
         savePin({ id: bubble.pinId, pin: null })
     }
 
+    // The root follows regrouping and resizing until the user moves the view away from the last fit
     private updateRootZoom(): void {
         if (!this.tree || !this.svg || !this.size.width || !this.size.height) return
-        const rootTransform = toZoomTransform([0, 0], this.tree.r, this.size)
-        this.zoomBehavior.scaleExtent([rootTransform.k / 4, maxZoom])
-        if (this.hasFittedRoot) return
-        this.hasFittedRoot = true
-        select(this.svg).call(this.zoomBehavior.transform, rootTransform)
+        const rootFit = toZoomTransform([0, 0], this.tree.r, this.size)
+        this.zoomBehavior.scaleExtent([rootFit.k / 4, maxZoom])
+        const isViewUntouched = !this.lastRootFit || isSameTransform(this.view, this.lastRootFit)
+        if (!isViewUntouched || isSameTransform(this.view, rootFit)) return
+        this.lastRootFit = rootFit
+        select(this.svg).call(this.zoomBehavior.transform, rootFit)
     }
 
     private refreshOpenIds(): boolean {
@@ -285,6 +288,10 @@ const measure = (element: Element): Size => {
 const toZoomTransform = (centre: Point, r: number, size: Size): ZoomTransform => {
     const { x, y, k } = fitTransform(centre, r, size)
     return zoomIdentity.translate(x, y).scale(k)
+}
+
+const isSameTransform = (a: ZoomTransform, b: ZoomTransform): boolean => {
+    return Math.abs(a.k - b.k) <= a.k * 1e-9 && Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) < 0.5
 }
 
 const haveSameIds = (a: ReadonlySet<string>, b: ReadonlySet<string>): boolean => {
