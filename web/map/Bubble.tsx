@@ -80,7 +80,7 @@ export const Bubble = memo(BubbleNode)
 
 const tooltipOf = ({ label, path, loc }: LayoutNode): string => {
     const lineCount = loc === undefined ? '' : `${loc} ${loc === 1 ? 'line' : 'lines'}`
-    return [label, path, lineCount].filter(Boolean).join('\n')
+    return [path || label, lineCount].filter(Boolean).join('\n')
 }
 
 // The stylesheet raises the fitted size to a readable minimum on screen
