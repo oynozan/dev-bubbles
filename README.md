@@ -1,10 +1,10 @@
 # Dev Bubbles
 
-A local, live bubble map of a git repository. Folders and files are drawn as nested circles, sized by how big they are and colored by language.
+A local, live bubble map of a git repository. Files are drawn as nested circles, sized by lines of code and colored by language, and the map updates as files change.
 
-Where it is headed: your coding agent (Claude Code, for example) groups the code into human-readable components, imports and HTTP calls are drawn as edges, and when you report a bug the agent marks the components that could be involved. See [PLAN.md](PLAN.md) for the full roadmap.
+Your coding agent (Claude Code, for example) groups the code into human-readable components in `.dev-bubbles/components.json`, and marks the components involved in a bug in `.dev-bubbles/bugs.json`. Without a manifest the map falls back to the directory tree. See [PLAN.md](PLAN.md) for the full roadmap.
 
-> **Status:** early. Phase 0 is done, which means a static circle pack of a repo served by a local Node process. Live updates, zoom and drag, components, edges and bug marks come in the next phases.
+> **Status:** early. The live map with zoom, drag and pins, the components manifest and the CLI commands work. The server already detects import and HTTP edges and resolves bug marks; drawing them on the map comes next.
 
 ## Quick start
 
@@ -20,10 +20,18 @@ npm start -- --repo /path/to/your/repo
 
 Then open the printed URL (default `http://127.0.0.1:4747`). The server only listens on `127.0.0.1`.
 
+| Command | |
+| --- | --- |
+| `serve [repo]` | Serve the live map (default command) |
+| `init [repo]` | Create `.dev-bubbles/`, gitignore `bugs.json` and `layout.json`, copy the `/map` and `/bug` commands and the agent skill into `.claude/` |
+| `summary [repo]` | Print a compact overview of the repo for a coding agent |
+| `validate [repo]` | Check `components.json` and `bugs.json`, exit 1 on any error |
+
 | Option | Default | |
 | --- | --- | --- |
-| `--repo <path>` | current directory | Repository to map |
+| `--repo <path>` | current directory | Repository when `[repo]` is not given |
 | `--port <n>` | `4747` | Port to listen on |
+| `--tracked-only` | off | Leave out files git does not track |
 
 ## Development
 
