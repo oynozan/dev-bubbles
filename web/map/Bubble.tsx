@@ -71,7 +71,7 @@ const CurvedLabel = ({ node }: LabelProps) => {
 }
 
 const CenteredLabel = ({ node }: LabelProps) => {
-    const { text, fontSize } = fitLabel(node.label, node.r * 1.7, node.r * 0.4)
+    const { text, fontSize } = fitLabel(node.label, node.r * 1.8, node.r * 0.3)
 
     return (
         <text
