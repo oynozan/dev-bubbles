@@ -10,7 +10,7 @@ Dev Bubbles draws a git repository as a live map of nested bubbles in your brows
 - Bug marks: striped red for suspected, solid red for confirmed. A mark hidden inside a closed bubble gives that bubble a red ring and a count badge.
 - A bug panel that lists the open bugs and shows why each bubble was marked.
 - Live updates. Creating, editing or deleting a file, or the agent saving its JSON files, updates the map within about a second.
-- Zoom and pan freely, click a bubble to zoom into it, go back up with the breadcrumb, drag a bubble to pin it in place and double-click to unpin.
+- Zoom and pan freely, click a bubble to zoom into it, go back up with the breadcrumb, drag a bubble with the middle mouse button to pin it in place and double-click to unpin.
 
 Edges come from JavaScript and TypeScript code: static, dynamic and `require` imports resolved with tsconfig paths, and `fetch` or `axios` calls matched to Express, Fastify, Hono and Next.js routes. Files in other languages still appear as bubbles.
 

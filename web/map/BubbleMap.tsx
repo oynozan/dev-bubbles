@@ -397,7 +397,8 @@ class MapController implements BubbleActions, EdgeActions {
         let isDragging = false
 
         const dragBehavior = drag<SVGGElement, unknown, SubjectPosition>()
-            .filter((event: MouseEvent) => !event.ctrlKey && !event.button && this.isSmallerThanView(id))
+            // The middle button moves a bubble, so the left button is free to pan the map from anywhere
+            .filter((event: MouseEvent) => event.button === 1 && this.isSmallerThanView(id))
             .clickDistance(dragThreshold)
             .subject(() => {
                 const bubble = this.bubbles.get(id)
