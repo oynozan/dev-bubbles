@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import type { MarkState, SnapshotBug, SnapshotMark } from '../../shared/schema.ts'
+import { formatAge, useNow } from '../lib/time.ts'
 import { bubbleName } from '../map/layout.ts'
 import type { FileEntry, LayoutNode } from '../map/layout.ts'
 import { MarkSymbol } from '../map/patterns.tsx'
@@ -18,12 +19,9 @@ type MarkListProps = Pick<BugPanelProps, 'nodesById' | 'files' | 'onSelectMark'>
 }
 
 const markStates: MarkState[] = ['confirmed', 'suspected']
-const ageUnits: [Intl.RelativeTimeFormatUnit, number][] = [['day', 86400], ['hour', 3600], ['minute', 60]]
-const ageFormat = new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
-const ageRefreshMs = 60_000
 
 export const BugPanel = ({ bugs, selectedBug, nodesById, files, onSelectBug, onSelectMark }: BugPanelProps) => {
-    const now = useNow(ageRefreshMs)
+    const now = useNow()
 
     useEffect(() => {
         if (!selectedBug) return
@@ -102,21 +100,4 @@ const countMarks = (marks: readonly SnapshotMark[]): string => {
         return count ? [`${count} ${state}`] : []
     })
     return counts.join(', ') || 'no marks'
-}
-
-const formatAge = (updatedAt: string, now: number): string => {
-    const seconds = (now - Date.parse(updatedAt)) / 1000
-    const unit = ageUnits.find(([, unitSeconds]) => seconds >= unitSeconds)
-    return unit ? ageFormat.format(-Math.floor(seconds / unit[1]), unit[0]) : 'just now'
-}
-
-const useNow = (refreshMs: number): number => {
-    const [now, setNow] = useState(Date.now)
-
-    useEffect(() => {
-        const timer = window.setInterval(() => setNow(Date.now()), refreshMs)
-        return () => window.clearInterval(timer)
-    }, [refreshMs])
-
-    return now
 }
