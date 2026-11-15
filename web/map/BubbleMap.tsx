@@ -364,10 +364,13 @@ class MapController implements BubbleActions, EdgeActions {
         return toZoomTransform([x, y], r, this.size)
     }
 
+    // A zoomed view would point at bubbles that moved, so the fresh layout is shown whole
     private resetLayout(): void {
         for (const simulation of this.simulations.values()) simulation.stop()
         this.simulations.clear()
         this.bubbles.clear()
+        this.lastRootFit = undefined
+        this.ui.setFocusId(ROOT_ID)
     }
 
     private refreshOpenIds(): boolean {
