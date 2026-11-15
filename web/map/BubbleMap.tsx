@@ -89,7 +89,7 @@ class MapController implements BubbleActions {
     private view: ZoomTransform = zoomIdentity
     private size: Size = { width: 0, height: 0 }
     private svg: SVGSVGElement | undefined
-    private hasView = false
+    private hasFittedRoot = false
 
     constructor(showOpenIds: (openIds: ReadonlySet<string>) => void, showFocus: (id: string) => void) {
         this.showOpenIds = showOpenIds
@@ -107,6 +107,7 @@ class MapController implements BubbleActions {
         select(svg).call(this.zoomBehavior).on('dblclick.zoom', null)
         const resizeObserver = new ResizeObserver(() => {
             this.size = measure(svg)
+            this.updateRootZoom()
             if (this.refreshOpenIds()) this.syncSimulations()
         })
         resizeObserver.observe(svg)
@@ -125,7 +126,7 @@ class MapController implements BubbleActions {
         this.tree = tree
         this.nodesById = indexNodes(tree)
         for (const [id, element] of this.elements) this.place(element, this.bubbles.get(id))
-        this.fitRootOnce(tree)
+        this.updateRootZoom()
         this.refreshOpenIds()
         this.syncSimulations()
     }
@@ -157,11 +158,12 @@ class MapController implements BubbleActions {
         savePin({ id, pin: null })
     }
 
-    private fitRootOnce(tree: LayoutNode): void {
-        const rootTransform = toZoomTransform([0, 0], tree.r, this.size)
+    private updateRootZoom(): void {
+        if (!this.tree || !this.svg || !this.size.width || !this.size.height) return
+        const rootTransform = toZoomTransform([0, 0], this.tree.r, this.size)
         this.zoomBehavior.scaleExtent([rootTransform.k / 4, maxZoom])
-        if (this.hasView || !this.svg || !this.size.width || !this.size.height) return
-        this.hasView = true
+        if (this.hasFittedRoot) return
+        this.hasFittedRoot = true
         select(this.svg).call(this.zoomBehavior.transform, rootTransform)
     }
 
