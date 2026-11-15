@@ -236,6 +236,7 @@ class MapController implements BubbleActions {
         let isDragging = false
 
         const dragBehavior = drag<SVGGElement, unknown, SubjectPosition>()
+            .filter((event: MouseEvent) => !event.ctrlKey && !event.button && this.isSmallerThanView(id))
             .clickDistance(dragThreshold)
             .subject(() => {
                 const bubble = this.bubbles.get(id)
@@ -264,6 +265,12 @@ class MapController implements BubbleActions {
                 if (bubble.fx != null && bubble.fy != null) savePin({ id, pin: [bubble.fx, bubble.fy] })
             })
         select(element).call(dragBehavior)
+    }
+
+    // A bubble bigger than the view reads as background, so a press on it pans the map
+    private isSmallerThanView(id: string): boolean {
+        const r = this.bubbles.get(id)?.r ?? 0
+        return r * this.view.k < Math.min(this.size.width, this.size.height) / 2
     }
 }
 
