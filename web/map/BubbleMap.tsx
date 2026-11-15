@@ -66,7 +66,6 @@ export const BubbleMap = ({ snapshot }: BubbleMapProps) => {
                     <g className="bubbles">
                         <Bubble node={tree} openIds={openIds} actions={controller} />
                     </g>
-                    <g className="edges" />
                 </g>
             </svg>
             <Breadcrumb trail={trail.length ? trail : [tree]} onSelect={controller.zoomTo} />
@@ -75,8 +74,7 @@ export const BubbleMap = ({ snapshot }: BubbleMapProps) => {
 }
 
 class MapController implements BubbleActions {
-    readonly bubbles = new Map<string, BubbleState>()
-    readonly tickListeners = new Set<() => void>()
+    private readonly bubbles = new Map<string, BubbleState>()
     private readonly elements = new Map<string, SVGGElement>()
     private readonly simulations = new Map<string, GroupSimulation>()
     private readonly dirtyGroups = new Set<string>()
@@ -225,7 +223,6 @@ class MapController implements BubbleActions {
             const element = this.elements.get(bubble.id)
             if (element) this.place(element, bubble)
         }
-        for (const listener of this.tickListeners) listener()
     }
 
     private place(element: SVGGElement, bubble: BubbleState | undefined): void {
