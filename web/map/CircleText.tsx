@@ -1,17 +1,12 @@
 import { useId } from 'react'
-import type { CSSProperties } from 'react'
+import type { SVGProps } from 'react'
 
-type CircleTextProps = {
+type CircleTextProps = SVGProps<SVGTextElement> & {
     r: number
-    rotate: number
     text: string
-    style?: CSSProperties
-    fill?: string
-    stroke?: string
-    strokeWidth?: string
 }
 
-export const CircleText = ({ r, rotate, text, ...textProps }: CircleTextProps) => {
+export const CircleText = ({ r, text, ...textProps }: CircleTextProps) => {
     const id = useId()
 
     return (
@@ -20,7 +15,6 @@ export const CircleText = ({ r, rotate, text, ...textProps }: CircleTextProps) =
                 fill="none"
                 d={`M 0 ${r} A ${r} ${r} 0 0 1 0 ${-r} A ${r} ${r} 0 0 1 0 ${r}`}
                 id={id}
-                transform={`rotate(${rotate})`}
                 style={{ pointerEvents: 'none' }}
             />
             <text textAnchor="middle" {...textProps}>
