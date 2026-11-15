@@ -109,4 +109,16 @@ describe('withCommitTree', () => {
         const content = await withCommitTree(lfsRepo, sha, async (treeDir) => fs.readFileSync(path.join(treeDir, 'data.bin'), 'utf8'))
         expect(content).toBe(pointer)
     })
+
+    it('links the live node_modules into the tree and leaves it in place afterwards', async () => {
+        const modulePath = path.join(repo, 'node_modules', 'pkg', 'index.js')
+        fs.mkdirSync(path.dirname(modulePath), { recursive: true })
+        fs.writeFileSync(modulePath, 'module.exports = {}\n')
+        const isLinked = await withCommitTree(repo, first, async (treeDir) => (
+            fs.existsSync(path.join(treeDir, 'node_modules', 'pkg', 'index.js'))
+        ))
+        expect(isLinked).toBe(true)
+        expect(fs.readdirSync(tempRoot)).toEqual([])
+        expect(fs.readFileSync(modulePath, 'utf8')).toBe('module.exports = {}\n')
+    })
 })

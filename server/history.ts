@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -41,8 +42,10 @@ export async function withCommitTree<T>(
     use: (treeDir: string, paths: string[]) => Promise<T>,
 ): Promise<T> {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dev-bubbles-commit-'))
+    const treeDir = path.join(tempDir, 'tree')
+    const modulesLink = path.join(treeDir, 'node_modules')
+    let isLinked = false
     try {
-        const treeDir = path.join(tempDir, 'tree')
         await fs.mkdir(treeDir)
         const options = { cwd: repoRoot, env: { ...process.env, GIT_INDEX_FILE: path.join(tempDir, 'index') }, maxBuffer: gitMaxBuffer }
         await execFileAsync('git', ['read-tree', sha], options)
@@ -50,8 +53,13 @@ export async function withCommitTree<T>(
         const prefix = `--prefix=${treeDir.replaceAll('\\', '/')}/`
         await execFileAsync('git', [...skipLfsSmudge, 'checkout-index', '--all', '--force', prefix], options)
         const { stdout } = await execFileAsync('git', ['ls-files', '-z'], options)
+        // A tsconfig extends or a workspace package resolves through node_modules, which a commit rarely holds
+        const liveModules = path.join(repoRoot, 'node_modules')
+        isLinked = existsSync(liveModules) && await fs.symlink(liveModules, modulesLink, 'junction').then(() => true, () => false)
         return await use(treeDir, stdout.split('\0').filter(Boolean))
     } finally {
+        // Unlinked first so removing the temp folder can never reach into the live node_modules
+        if (isLinked) await fs.unlink(modulesLink)
         await fs.rm(tempDir, { recursive: true, force: true, maxRetries: 10 })
     }
 }

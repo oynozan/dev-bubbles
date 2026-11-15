@@ -22,6 +22,16 @@ function allFiles(root: TreeNode): FileRef[] {
     return flattenTree(root).flatMap((node) => node.files ?? [])
 }
 
+function writeFile(root: string, filePath: string, content: string): void {
+    fs.mkdirSync(path.dirname(path.join(root, filePath)), { recursive: true })
+    fs.writeFileSync(path.join(root, filePath), content)
+}
+
+function git(cwd: string, ...args: string[]): string {
+    const identity = ['-c', 'user.name=Ada Lovelace', '-c', 'user.email=ada@localhost', '-c', 'commit.gpgsign=false']
+    return execFileSync('git', [...identity, ...args], { cwd, encoding: 'utf8' }).trim()
+}
+
 describe('createSnapshotSource', () => {
     let fixtureDir: string
     let source: SnapshotSource
@@ -187,6 +197,26 @@ describe('createSnapshotSource', () => {
         expect(broken?.root).toBe(named?.root)
         expect(broken?.errors).toEqual([expect.stringMatching(/^components\.json: /)])
         expect(await source.snapshotAt('deadbeefdeadbeef')).toBeUndefined()
+    })
+
+    it('resolves imports of a past commit through the live node_modules like the live view', async () => {
+        const tsconfigPath = path.join(fixtureDir, 'tsconfig.json')
+        const tsconfig = JSON.parse(fs.readFileSync(tsconfigPath, 'utf8'))
+        fs.writeFileSync(tsconfigPath, JSON.stringify({ extends: '@acme/tsconfig/base.json', ...tsconfig }))
+        writeFile(fixtureDir, 'node_modules/@acme/tsconfig/base.json', '{ "compilerOptions": { "strict": true } }')
+        writeFile(fixtureDir, 'packages/ui/package.json', '{ "name": "@acme/ui", "main": "index.ts" }')
+        writeFile(fixtureDir, 'packages/ui/index.ts', 'export const button = 1\n')
+        writeFile(fixtureDir, 'web/src/ui.ts', "import { button } from '@acme/ui'\nexport const ui = button\n")
+        // Linked the way npm links a workspace package
+        fs.symlinkSync(path.join(fixtureDir, 'packages', 'ui'), path.join(fixtureDir, 'node_modules', '@acme', 'ui'), 'junction')
+        git(fixtureDir, 'add', '-A')
+        git(fixtureDir, 'commit', '-m', 'Add a workspace package and a shared tsconfig')
+        const live = await source.rescan()
+        const past = await source.snapshotAt(git(fixtureDir, 'rev-parse', 'HEAD'))
+        expect(live.edges).toContainEqual({ from: 'file:web/src/ui.ts', to: 'file:packages/ui/index.ts', kind: 'import' })
+        expect(live.edges).toContainEqual({ from: 'file:src/api/server.ts', to: 'file:src/lib/logger.ts', kind: 'import' })
+        expect(past?.edges).toEqual(live.edges)
+        expect(fs.existsSync(path.join(fixtureDir, 'node_modules', '@acme', 'tsconfig', 'base.json'))).toBe(true)
     })
 
     it('runs at most one follow-up scan for calls made during a scan', async () => {

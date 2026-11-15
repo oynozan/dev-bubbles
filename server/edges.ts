@@ -25,8 +25,10 @@ const resolverConfigFile = /(?:^|\/)(?:tsconfig[^/]*\.json|package\.json)$/
 // Parsing and resolving are synchronous, so long runs pause this often to let the server answer requests
 const maxBlockMs = 50
 
-export function createEdgeIndex(repoRoot: string): EdgeIndex {
+// A past commit's tree links the live node_modules, so a workspace package there resolves into liveRepoRoot
+export function createEdgeIndex(repoRoot: string, liveRepoRoot = repoRoot): EdgeIndex {
     const rootDir = fs.realpathSync.native(repoRoot)
+    const liveRootDir = fs.realpathSync.native(liveRepoRoot)
     const resolverOptions = {
         extensions: ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json'],
         extensionAlias: { '.js': ['.ts', '.tsx', '.js'], '.mjs': ['.mts', '.mjs'], '.cjs': ['.cts', '.cjs'] },
@@ -68,11 +70,7 @@ export function createEdgeIndex(repoRoot: string): EdgeIndex {
         const filePath = path.join(rootDir, fromPath)
         const resolved = resolver.resolveFileSync(filePath, specifier).path
             ?? plainResolver.resolveFileSync(filePath, specifier).path
-        if (!resolved) return undefined
-        const relative = path.relative(rootDir, resolved)
-        const segments = relative.split(path.sep)
-        const isInsideRepo = !path.isAbsolute(relative) && segments[0] !== '..'
-        return isInsideRepo && !segments.includes('node_modules') ? segments.join('/') : undefined
+        return resolved ? repoPath(rootDir, resolved) ?? repoPath(liveRootDir, resolved) : undefined
     }
 
     return {
@@ -108,6 +106,14 @@ async function refreshCache(rootDir: string, files: FileStamp[], cache: Map<stri
     for (const cachedPath of cache.keys()) {
         if (!analyzedPaths.has(cachedPath)) cache.delete(cachedPath)
     }
+}
+
+// Undefined for a file outside rootDir or inside node_modules
+function repoPath(rootDir: string, filePath: string): string | undefined {
+    const relative = path.relative(rootDir, filePath)
+    const segments = relative.split(path.sep)
+    const isInsideRepo = !path.isAbsolute(relative) && segments[0] !== '..'
+    return isInsideRepo && !segments.includes('node_modules') ? segments.join('/') : undefined
 }
 
 function createPause(): () => Promise<void> {

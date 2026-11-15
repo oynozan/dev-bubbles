@@ -93,7 +93,7 @@ export function createSnapshotSource(repoRoot: string, options: { trackedOnly: b
         if (cached) return cached
         const view = withCommitTree(repoRoot, sha, async (treeDir, paths) => {
             const files = await createInventory(treeDir, async () => paths).scan(manifest?.ignore ?? [])
-            return mapFiles(repoName, files, createEdgeIndex(treeDir), manifest)
+            return mapFiles(repoName, files, createEdgeIndex(treeDir, repoRoot), manifest)
         })
         commitViews.set(key, view)
         view.catch(() => commitViews.delete(key))
