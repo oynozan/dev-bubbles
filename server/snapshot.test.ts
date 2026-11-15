@@ -1,79 +1,142 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeFixture } from '../scripts/make-fixture.ts'
-import type { TreeNode } from '../shared/schema.ts'
-import { buildSnapshot } from './snapshot.ts'
+import { ROOT_ID } from '../shared/schema.ts'
+import type { Manifest, TreeNode } from '../shared/schema.ts'
+import { createSnapshotSource } from './snapshot.ts'
+import type { SnapshotSource } from './snapshot.ts'
+
+const manifest: Manifest = {
+    version: 1,
+    components: [{ id: 'auth', label: 'Auth', include: ['src/auth/**'] }],
+}
 
 function flatten(node: TreeNode): TreeNode[] {
     return [node, ...(node.children ?? []).flatMap(flatten)]
 }
 
-describe('buildSnapshot', () => {
+function nodeIds(root: TreeNode): string[] {
+    return flatten(root).map((node) => node.id)
+}
+
+describe('createSnapshotSource', () => {
     let fixtureDir: string
-    let root: TreeNode
-    let nodes: TreeNode[]
+    let source: SnapshotSource
 
-    beforeAll(() => {
+    function writeConfig(fileName: string, content: unknown): void {
+        fs.mkdirSync(path.join(fixtureDir, '.dev-bubbles'), { recursive: true })
+        const text = typeof content === 'string' ? content : JSON.stringify(content)
+        fs.writeFileSync(path.join(fixtureDir, '.dev-bubbles', fileName), text)
+    }
+
+    beforeEach(() => {
         fixtureDir = makeFixture()
-        const packageDir = path.join(fixtureDir, 'node_modules', 'left-pad')
-        fs.mkdirSync(packageDir, { recursive: true })
-        fs.writeFileSync(path.join(packageDir, 'index.js'), 'module.exports = {}\n')
-        fs.mkdirSync(path.join(fixtureDir, 'empty'))
-        fs.symlinkSync(path.join(fixtureDir, 'src', 'lib'), path.join(fixtureDir, 'lib-link'), 'junction')
-        fs.mkdirSync(path.join(fixtureDir, 'gone'))
-        fs.symlinkSync(path.join(fixtureDir, 'gone'), path.join(fixtureDir, 'gone-link'), 'junction')
-        fs.rmdirSync(path.join(fixtureDir, 'gone'))
-        root = buildSnapshot(fixtureDir).root
-        nodes = flatten(root)
+        source = createSnapshotSource(fixtureDir, { trackedOnly: false })
     })
 
-    afterAll(() => {
-        fs.rmSync(fixtureDir, { recursive: true, force: true })
+    afterEach(() => {
+        vi.unstubAllEnvs()
+        fs.rmSync(fixtureDir, { recursive: true, force: true, maxRetries: 10 })
     })
 
-    it('roots the tree at the repo folder', () => {
-        expect(root).toMatchObject({ id: 'dir:', path: '', label: path.basename(fixtureDir), size: 4096 })
+    it('builds the directory tree with line counts when there is no config', async () => {
+        const snapshot = await source.rescan()
+        expect(snapshot.root).toMatchObject({ id: ROOT_ID, kind: 'dir', label: path.basename(fixtureDir) })
+        const session = flatten(snapshot.root).find((node) => node.id === 'file:src/auth/session.ts')
+        expect(session).toMatchObject({ kind: 'file', path: 'src/auth/session.ts' })
+        expect(session?.loc).toBeGreaterThan(0)
+        expect(snapshot).toMatchObject({ bugs: [], pins: {}, errors: [] })
+        expect(Date.parse(snapshot.generatedAt)).not.toBeNaN()
     })
 
-    it('includes directories and files with their sizes', () => {
-        expect(nodes.map((node) => node.id)).toContain('dir:src')
-        const session = nodes.find((node) => node.id === 'file:src/auth/session.ts')
-        expect(session?.size).toBeGreaterThan(0)
+    it('includes import and http edges', async () => {
+        const { edges } = await source.rescan()
+        expect(edges).toContainEqual(expect.objectContaining({ kind: 'import' }))
+        expect(edges).toContainEqual({
+            from: 'file:web/src/LoginPage.tsx',
+            to: 'file:src/api/routes/login.ts',
+            kind: 'http',
+            label: 'POST /api/login',
+        })
     })
 
-    it('skips excluded entries and empty directories', () => {
-        const paths = nodes.map((node) => node.path)
-        expect(paths.filter((nodePath) => /(^|\/)(\.git|node_modules)(\/|$)/.test(nodePath))).toEqual([])
-        expect(paths).not.toContain('empty')
+    it('keeps the last valid manifest when components.json breaks', async () => {
+        writeConfig('components.json', manifest)
+        expect(nodeIds((await source.rescan()).root)).toContain('auth')
+        writeConfig('components.json', '{ "version": 1, ')
+        const broken = await source.rescan()
+        expect(nodeIds(broken.root)).toContain('auth')
+        expect(broken.errors).toEqual([expect.stringMatching(/^components\.json: /)])
+        fs.rmSync(path.join(fixtureDir, '.dev-bubbles', 'components.json'))
+        const missing = await source.rescan()
+        expect(nodeIds(missing.root)).not.toContain('auth')
+        expect(missing.errors).toEqual([])
     })
 
-    it('skips links to directories and links whose target is gone', () => {
-        const paths = nodes.map((node) => node.path)
-        expect(paths.filter((nodePath) => /^(lib|gone)-link(\/|$)/.test(nodePath))).toEqual([])
+    it('applies the manifest ignore globs', async () => {
+        writeConfig('components.json', { ...manifest, ignore: ['web/**'] })
+        const ids = nodeIds((await source.rescan()).root)
+        expect(ids.filter((id) => id.startsWith('file:web/'))).toEqual([])
     })
 
-    it.skipIf(process.platform === 'win32')('follows links to files', () => {
-        fs.symlinkSync('session.ts', path.join(fixtureDir, 'src', 'auth', 'session-link.ts'))
-        const link = flatten(buildSnapshot(fixtureDir).root).find((node) => node.id === 'file:src/auth/session-link.ts')
-        expect(link?.size).toBe(fs.statSync(path.join(fixtureDir, 'src', 'auth', 'session.ts')).size)
+    it('reports semantic manifest errors', async () => {
+        writeConfig('components.json', { ...manifest, httpEdges: [{ from: 'auth', to: 'nowhere' }] })
+        expect((await source.rescan()).errors).toEqual([expect.stringContaining('nowhere')])
     })
 
-    it('reads a directory it cannot list as empty', () => {
-        expect(buildSnapshot(path.join(fixtureDir, 'missing')).root.children).toEqual([])
+    it('resolves open bug marks and reports unknown targets', async () => {
+        writeConfig('components.json', manifest)
+        writeConfig('bugs.json', {
+            version: 1,
+            bugs: [
+                { id: 'b1', title: 'Login loops', status: 'open', marks: [
+                    { component: 'auth', state: 'suspected' },
+                    { component: 'auth.missing', state: 'confirmed' },
+                ] },
+                { id: 'b2', title: 'Old bug', status: 'fixed', marks: [{ component: 'auth', state: 'confirmed' }] },
+            ],
+        })
+        const snapshot = await source.rescan()
+        expect(snapshot.bugs).toEqual([{ id: 'b1', title: 'Login loops', marks: [{ nodeId: 'auth', state: 'suspected' }] }])
+        expect(snapshot.errors).toEqual([expect.stringContaining('auth.missing')])
     })
 
-    it('uses forward-slash paths in every id', () => {
-        for (const node of nodes) {
-            expect(node.path).not.toContain('\\')
-            expect(node.id).toBe(node.children ? `dir:${node.path}` : `file:${node.path}`)
-        }
+    it('carries pins from layout.json and keeps them when the file breaks', async () => {
+        writeConfig('layout.json', { version: 1, pins: { 'dir:src': [10, -5] } })
+        expect((await source.rescan()).pins).toEqual({ 'dir:src': [10, -5] })
+        writeConfig('layout.json', { version: 1, pins: { 'dir:src': 'left' } })
+        const broken = await source.rescan()
+        expect(broken.pins).toEqual({ 'dir:src': [10, -5] })
+        expect(broken.errors).toEqual([expect.stringMatching(/^layout\.json: pins\["dir:src"\]: /)])
     })
 
-    it('sorts children by name', () => {
-        for (const node of nodes) {
-            const labels = (node.children ?? []).map((child) => child.label)
-            expect(labels).toEqual([...labels].sort())
-        }
+    it('sets and clears pins in layout.json', async () => {
+        const layoutPath = path.join(fixtureDir, '.dev-bubbles', 'layout.json')
+        source.setPin({ id: 'dir:src', pin: [1.5, 2] })
+        source.setPin({ id: 'file:src/lib/url.ts', pin: [-3, 4] })
+        source.setPin({ id: 'dir:src', pin: null })
+        expect(JSON.parse(fs.readFileSync(layoutPath, 'utf8'))).toEqual({ version: 1, pins: { 'file:src/lib/url.ts': [-3, 4] } })
+        expect(fs.readdirSync(path.dirname(layoutPath))).toEqual(['layout.json'])
+        expect((await source.rescan()).pins).toEqual({ 'file:src/lib/url.ts': [-3, 4] })
+    })
+
+    it('runs at most one follow-up scan for calls made during a scan', async () => {
+        const first = source.rescan()
+        const second = source.rescan()
+        const third = source.rescan()
+        expect(second).toBe(third)
+        expect(await first).not.toBe(await second)
+    })
+
+    it('keeps the last snapshot and reports the error when a scan fails', async () => {
+        const before = await source.rescan()
+        vi.stubEnv('GIT_CEILING_DIRECTORIES', path.dirname(fixtureDir))
+        fs.renameSync(path.join(fixtureDir, '.git'), path.join(fixtureDir, '.git-away'))
+        const failed = await source.rescan()
+        expect(failed.root).toEqual(before.root)
+        expect(failed.errors).toEqual([expect.stringMatching(/^Rescan failed: /)])
+        fs.renameSync(path.join(fixtureDir, '.git-away'), path.join(fixtureDir, '.git'))
+        expect((await source.rescan()).errors).toEqual([])
     })
 })

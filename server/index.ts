@@ -2,11 +2,29 @@ import fs from 'node:fs'
 import { createServer } from 'node:http'
 import type { IncomingMessage, Server, ServerResponse } from 'node:http'
 import path from 'node:path'
-import { buildSnapshot } from './snapshot.ts'
+import { pinRequestSchema } from '../shared/schema.ts'
+import type { Snapshot } from '../shared/schema.ts'
+import { findRepoRoot } from './inventory.ts'
+import { findPackageRoot } from './package-root.ts'
+import { createSnapshotSource } from './snapshot.ts'
+import type { SnapshotSource } from './snapshot.ts'
+import { watchRepo } from './watcher.ts'
 
 export type ServerOptions = {
     repo: string
     port: number
+    trackedOnly: boolean
+}
+
+type EventStream = {
+    open(response: ServerResponse): void
+    publish(snapshot: Snapshot): void
+}
+
+type RequestContext = {
+    snapshots: SnapshotSource
+    events: EventStream
+    refresh: () => Promise<void>
 }
 
 const contentTypes: Record<string, string> = {
@@ -21,34 +39,40 @@ const contentTypes: Record<string, string> = {
 }
 
 const webDir = path.join(findPackageRoot(import.meta.dirname), 'dist', 'web')
+const maxLayoutBodySize = 64 * 1024
 
 // Other hostnames are refused so a DNS rebinding page cannot read the repo
 const localHostnames = new Set(['127.0.0.1', 'localhost'])
 
-export function startServer({ repo, port }: ServerOptions): Promise<Server> {
+export async function startServer({ repo, port, trackedOnly }: ServerOptions): Promise<Server> {
+    const repoRoot = await findRepoRoot(repo)
+    const snapshots = createSnapshotSource(repoRoot, { trackedOnly })
+    const events = createEventStream(await snapshots.rescan())
+    const refresh = async () => events.publish(await snapshots.rescan())
     const server = createServer((request, response) => {
-        try {
-            handleRequest(repo, request, response)
-        } catch (error) {
-            sendJson(response, 500, { error: error instanceof Error ? error.message : String(error) })
-        }
+        handleRequest({ snapshots, events, refresh }, request, response).catch((error: unknown) => {
+            sendServerError(response, error)
+        })
     })
+    await listen(server, port)
+    const watcher = await watchRepo(repoRoot, () => void refresh())
+    server.on('close', () => void watcher.close())
+    return server
+}
+
+function listen(server: Server, port: number): Promise<void> {
     return new Promise((resolve, reject) => {
         server.once('error', reject)
         server.listen(port, '127.0.0.1', () => {
             server.off('error', reject)
-            resolve(server)
+            resolve()
         })
     })
 }
 
-function handleRequest(repo: string, request: IncomingMessage, response: ServerResponse): void {
+async function handleRequest(context: RequestContext, request: IncomingMessage, response: ServerResponse): Promise<void> {
     if (!isLocalHost(request.headers.host)) {
         sendText(response, 403, 'Forbidden host')
-        return
-    }
-    if (request.method !== 'GET' && request.method !== 'HEAD') {
-        response.writeHead(405, { Allow: 'GET, HEAD' }).end()
         return
     }
     const pathname = readPathname(request.url ?? '/')
@@ -56,11 +80,17 @@ function handleRequest(repo: string, request: IncomingMessage, response: ServerR
         sendText(response, 400, 'Bad request')
         return
     }
-    if (pathname === '/api/snapshot') {
-        sendJson(response, 200, buildSnapshot(repo))
-        return
+    if (pathname === '/api/layout') {
+        if (request.method === 'POST') await updatePin(context, request, response)
+        else sendMethodNotAllowed(response, 'POST')
+    } else if (pathname === '/api/events') {
+        if (request.method === 'GET') context.events.open(response)
+        else sendMethodNotAllowed(response, 'GET')
+    } else if (request.method === 'GET' || request.method === 'HEAD') {
+        serveStatic(pathname, response)
+    } else {
+        sendMethodNotAllowed(response, 'GET, HEAD')
     }
-    serveStatic(pathname, response)
 }
 
 function isLocalHost(host: string | undefined): boolean {
@@ -75,6 +105,89 @@ function readPathname(url: string): string | undefined {
         return undefined
     }
 }
+
+/* Server-Sent Events */
+
+function createEventStream(initialSnapshot: Snapshot): EventStream {
+    const clients = new Set<ServerResponse>()
+    let lastContent = contentKey(initialSnapshot)
+    let lastMessage = formatEvent(initialSnapshot)
+    return {
+        open(response) {
+            response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' })
+            response.write(lastMessage)
+            clients.add(response)
+            response.on('close', () => clients.delete(response))
+        },
+        publish(snapshot) {
+            const content = contentKey(snapshot)
+            if (content === lastContent) return
+            lastContent = content
+            lastMessage = formatEvent(snapshot)
+            for (const client of clients) client.write(lastMessage)
+        },
+    }
+}
+
+function contentKey(snapshot: Snapshot): string {
+    return JSON.stringify({ ...snapshot, generatedAt: undefined })
+}
+
+function formatEvent(snapshot: Snapshot): string {
+    return `data: ${JSON.stringify(snapshot)}\n\n`
+}
+
+/* Layout pins */
+
+async function updatePin(context: RequestContext, request: IncomingMessage, response: ServerResponse): Promise<void> {
+    // Requiring JSON forces a CORS preflight, so other sites cannot post pins
+    if (!isJsonContentType(request.headers['content-type'])) {
+        sendText(response, 415, 'Expected Content-Type application/json')
+        return
+    }
+    const body = await readBody(request, maxLayoutBodySize)
+    if (body === undefined) {
+        sendText(response, 413, 'Request body too large')
+        return
+    }
+    const pinRequest = pinRequestSchema.safeParse(parseJson(body))
+    if (!pinRequest.success) {
+        sendText(response, 400, 'Expected { "id": string, "pin": [x, y] | null }')
+        return
+    }
+    context.snapshots.setPin(pinRequest.data)
+    response.writeHead(204).end()
+    void context.refresh()
+}
+
+function isJsonContentType(contentType: string | undefined): boolean {
+    return contentType?.split(';')[0].trim().toLowerCase() === 'application/json'
+}
+
+// Resolves undefined once the body passes the limit and keeps draining the rest
+function readBody(request: IncomingMessage, limit: number): Promise<string | undefined> {
+    return new Promise((resolve, reject) => {
+        const chunks: Buffer[] = []
+        let size = 0
+        request.on('data', (chunk: Buffer) => {
+            size += chunk.length
+            if (size > limit) resolve(undefined)
+            else chunks.push(chunk)
+        })
+        request.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+        request.on('error', reject)
+    })
+}
+
+function parseJson(text: string): unknown {
+    try {
+        return JSON.parse(text)
+    } catch {
+        return undefined
+    }
+}
+
+/* Static files and responses */
 
 function serveStatic(pathname: string, response: ServerResponse): void {
     const filePath = resolveStaticFile(pathname === '/' ? '/index.html' : pathname)
@@ -95,6 +208,18 @@ function resolveStaticFile(requestedPath: string): string | undefined {
     return fs.statSync(filePath, { throwIfNoEntry: false })?.isFile() ? filePath : undefined
 }
 
+function sendMethodNotAllowed(response: ServerResponse, allow: string): void {
+    response.writeHead(405, { Allow: allow }).end()
+}
+
+function sendServerError(response: ServerResponse, error: unknown): void {
+    if (response.headersSent) {
+        response.destroy()
+        return
+    }
+    sendJson(response, 500, { error: error instanceof Error ? error.message : String(error) })
+}
+
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
     send(response, status, 'application/json; charset=utf-8', JSON.stringify(body))
 }
@@ -109,14 +234,4 @@ function send(response: ServerResponse, status: number, contentType: string, bod
         'Content-Length': Buffer.byteLength(body),
     })
     response.end(body)
-}
-
-function findPackageRoot(startDir: string): string {
-    let dir = startDir
-    while (!fs.existsSync(path.join(dir, 'package.json'))) {
-        const parentDir = path.dirname(dir)
-        if (parentDir === dir) throw new Error(`No package.json found above ${startDir}`)
-        dir = parentDir
-    }
-    return dir
 }
