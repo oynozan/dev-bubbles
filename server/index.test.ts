@@ -8,7 +8,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeFixture } from '../scripts/make-fixture.ts'
 import { ROOT_ID } from '../shared/schema.ts'
-import type { Snapshot, TreeNode } from '../shared/schema.ts'
+import type { FileRef, Snapshot, TreeNode } from '../shared/schema.ts'
 import { flattenTree } from './components.ts'
 import { startServer } from './index.ts'
 
@@ -17,8 +17,8 @@ type EventReader = {
     close(): void
 }
 
-function findNode(root: TreeNode, id: string): TreeNode | undefined {
-    return flattenTree(root).find((node) => node.id === id)
+function findFile(root: TreeNode, filePath: string): FileRef | undefined {
+    return flattenTree(root).flatMap((node) => node.files ?? []).find((file) => file.path === filePath)
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -101,7 +101,7 @@ describe('startServer', () => {
         const snapshot = await events.next()
         expect(Date.parse(snapshot.generatedAt)).toBeGreaterThanOrEqual(listeningAt)
         expect(snapshot.root).toMatchObject({ id: ROOT_ID, label: path.basename(fixtureDir) })
-        expect(findNode(snapshot.root, 'file:src/auth/session.ts')?.loc).toBeGreaterThan(0)
+        expect(findFile(snapshot.root, 'src/auth/session.ts')?.loc).toBeGreaterThan(0)
         expect(snapshot.errors).toEqual([])
     })
 
@@ -109,12 +109,12 @@ describe('startServer', () => {
         await events.next()
         const filePath = path.join(fixtureDir, 'src', 'live.ts')
         fs.writeFileSync(filePath, 'export const a = 1\n')
-        const created = await waitForSnapshot(events, (snapshot) => findNode(snapshot.root, 'file:src/live.ts') !== undefined)
-        expect(findNode(created.root, 'file:src/live.ts')?.loc).toBe(1)
+        const created = await waitForSnapshot(events, (snapshot) => findFile(snapshot.root, 'src/live.ts') !== undefined)
+        expect(findFile(created.root, 'src/live.ts')?.loc).toBe(1)
         fs.appendFileSync(filePath, 'export const b = 2\nexport const c = 3\n')
-        await waitForSnapshot(events, (snapshot) => findNode(snapshot.root, 'file:src/live.ts')?.loc === 3)
+        await waitForSnapshot(events, (snapshot) => findFile(snapshot.root, 'src/live.ts')?.loc === 3)
         fs.rmSync(filePath)
-        await waitForSnapshot(events, (snapshot) => findNode(snapshot.root, 'file:src/live.ts') === undefined)
+        await waitForSnapshot(events, (snapshot) => findFile(snapshot.root, 'src/live.ts') === undefined)
     })
 
     it('skips snapshots that did not change', async () => {
@@ -124,7 +124,7 @@ describe('startServer', () => {
         await delay(700)
         fs.writeFileSync(path.join(fixtureDir, 'src', 'later.ts'), 'export {}\n')
         const next = await events.next()
-        expect(findNode(next.root, 'file:src/later.ts')).toBeDefined()
+        expect(findFile(next.root, 'src/later.ts')).toBeDefined()
     })
 
     it('saves a pin to layout.json and pushes it in the next snapshot', async () => {

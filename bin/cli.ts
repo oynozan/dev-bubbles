@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { resolveBugs } from '../server/bugs.ts'
-import { buildTree, checkManifest, flattenTree, listComponents } from '../server/components.ts'
+import { buildTree, checkManifest, flattenTree, listComponents, treeIds } from '../server/components.ts'
 import { createEdgeIndex } from '../server/edges.ts'
 import type { UnmatchedCall } from '../server/edges.ts'
 import { startServer } from '../server/index.ts'
@@ -13,8 +13,8 @@ import type { InventoryFile } from '../server/inventory.ts'
 import { configDir, errorMessage, formatJson, readJsonFile } from '../server/json-file.ts'
 import type { JsonFileResult } from '../server/json-file.ts'
 import { findPackageRoot } from '../server/package-root.ts'
-import { bugsFileSchema, fileId, manifestSchema, UNMAPPED_ID } from '../shared/schema.ts'
-import type { Edge, Manifest, TreeNode } from '../shared/schema.ts'
+import { bugsFileSchema, fileId, manifestSchema, ownFilesId, UNMAPPED_ID } from '../shared/schema.ts'
+import type { Edge, FileRef, Manifest, TreeNode } from '../shared/schema.ts'
 
 type RepoState = {
     manifestResult: JsonFileResult<Manifest>
@@ -154,6 +154,10 @@ async function summarize(repoRoot: string, trackedOnly: boolean): Promise<string
         section('Directories:', describeDirectories(buildTree('', files, undefined))),
         section('Top cross-directory imports (importing dir -> imported dir: count):', describeImportPairs(edges)),
         section('Components (id, label: files):', describeComponents(manifestResult, root)),
+        section(
+            'Components with both sub-components and own files (own files show as an extra leaf named after the component, move them into a sub-component):',
+            capList(describeOwnFiles(root)),
+        ),
         section('Unmapped files:', manifest?.components.length ? capList(unmappedPaths(root)) : ['all files, components.json has no valid components yet']),
         section('Unmatched HTTP calls:', capList(unmatchedCalls.map(describeCall))),
     ].join('\n\n')
@@ -170,8 +174,8 @@ function capList(lines: string[]): string[] {
 }
 
 function describeDirectories(node: TreeNode, depth = 0): string[] {
-    return (node.children ?? []).filter((child) => child.kind === 'dir').flatMap((dir) => {
-        const dirFiles = fileNodes(dir)
+    return (node.children ?? []).filter((child) => child.id !== ownFilesId(node.id)).flatMap((dir) => {
+        const dirFiles = fileRefs(dir)
         const line = `${'  '.repeat(depth)}${dir.label}/  ${countOf(dirFiles.length, 'file')}, ${sumLoc(dirFiles)} LOC`
         return [line, ...describeDirectories(dir, depth + 1)]
     })
@@ -200,7 +204,15 @@ function describeComponents(manifestResult: JsonFileResult<Manifest>, root: Tree
     const nodes = new Map(flattenTree(root).map((node) => [node.id, node]))
     return listComponents(manifestResult.value.components).map(({ def, depth }) => {
         const node = nodes.get(def.id)
-        return `${'  '.repeat(depth)}${def.id}, ${def.label}: ${node ? fileNodes(node).length : 0}`
+        return `${'  '.repeat(depth)}${def.id}, ${def.label}: ${node ? fileRefs(node).length : 0}`
+    })
+}
+
+function describeOwnFiles(root: TreeNode): string[] {
+    return flattenTree(root).flatMap((node) => {
+        const ownFiles = node.children?.find((child) => child.id === ownFilesId(node.id))?.files
+        if (node.kind !== 'component' || !ownFiles) return []
+        return [`${node.id}, ${node.label}: ${countOf(ownFiles.length, 'file')}`, ...ownFiles.map((file) => `  ${file.path}`)]
     })
 }
 
@@ -210,19 +222,19 @@ function describeCall(call: UnmatchedCall): string {
 
 function unmappedPaths(root: TreeNode): string[] {
     const unmapped = root.children?.find((node) => node.id === UNMAPPED_ID)
-    return (unmapped ? fileNodes(unmapped) : []).map((node) => node.path ?? '').toSorted()
+    return (unmapped?.files ?? []).map((file) => file.path)
 }
 
-function fileNodes(node: TreeNode): TreeNode[] {
-    return flattenTree(node).filter((child) => child.kind === 'file')
+function fileRefs(node: TreeNode): FileRef[] {
+    return flattenTree(node).flatMap((child) => child.files ?? [])
 }
 
 function countOf(count: number, noun: string): string {
     return `${count} ${noun}${count === 1 ? '' : 's'}`
 }
 
-function sumLoc(items: { loc?: number }[]): number {
-    return items.reduce((total, item) => total + (item.loc ?? 0), 0)
+function sumLoc(items: FileRef[]): number {
+    return items.reduce((total, item) => total + item.loc, 0)
 }
 
 function directoryOf(nodeId: string): string {
@@ -234,7 +246,7 @@ function directoryOf(nodeId: string): string {
 async function validate(repoRoot: string, trackedOnly: boolean): Promise<number> {
     const { manifestResult, manifest, root } = await loadRepo(repoRoot, trackedOnly)
     const bugsResult = readJsonFile(path.join(repoRoot, configDir, 'bugs.json'), bugsFileSchema)
-    const nodeIds = new Set(flattenTree(root).map((node) => node.id))
+    const nodeIds = treeIds(root)
     const errors = [
         ...(manifestResult.status === 'invalid' ? manifestResult.errors : []),
         ...(manifest ? checkManifest(manifest) : []),

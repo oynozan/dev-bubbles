@@ -6,6 +6,8 @@ export const ROOT_ID = 'dir:'
 export const UNMAPPED_ID = 'unmapped'
 export const dirId = (path: string): string => `dir:${path}`
 export const fileId = (path: string): string => `file:${path}`
+// The leaf that holds a group's own files when the group also has sub-groups
+export const ownFilesId = (groupId: string): string => `own:${groupId}`
 
 /* components.json */
 
@@ -94,15 +96,28 @@ export type PinRequest = z.infer<typeof pinRequestSchema>
 
 /* Snapshot (server to client) */
 
-export type NodeKind = 'component' | 'dir' | 'file'
+export type NodeKind = 'component' | 'dir'
 
+export type FileRef = {
+    path: string
+    loc: number
+}
+
+// A bubble is a group with children or a leaf with files, never both
 export type TreeNode = {
     id: string
     kind: NodeKind
     label: string
     path?: string
-    loc?: number
+    files?: FileRef[]
     children?: TreeNode[]
+}
+
+export type CommitInfo = {
+    sha: string
+    subject: string
+    author: string
+    date: string
 }
 
 export type EdgeKind = 'import' | 'http'
@@ -134,4 +149,8 @@ export type Snapshot = {
     pins: Record<string, Pin>
     errors: string[]
     generatedAt: string
+    // Newest first, empty on a snapshot of a past commit
+    commits: CommitInfo[]
+    // The commit this snapshot shows, absent for the live working tree
+    commit?: string
 }

@@ -3,7 +3,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeFixture } from '../scripts/make-fixture.ts'
 import { ROOT_ID } from '../shared/schema.ts'
-import type { Manifest, TreeNode } from '../shared/schema.ts'
+import type { FileRef, Manifest, TreeNode } from '../shared/schema.ts'
 import { flattenTree } from './components.ts'
 import { createSnapshotSource } from './snapshot.ts'
 import type { SnapshotSource } from './snapshot.ts'
@@ -15,6 +15,10 @@ const manifest: Manifest = {
 
 function nodeIds(root: TreeNode): string[] {
     return flattenTree(root).map((node) => node.id)
+}
+
+function allFiles(root: TreeNode): FileRef[] {
+    return flattenTree(root).flatMap((node) => node.files ?? [])
 }
 
 describe('createSnapshotSource', () => {
@@ -40,9 +44,10 @@ describe('createSnapshotSource', () => {
     it('builds the directory tree with line counts when there is no config', async () => {
         const snapshot = await source.rescan()
         expect(snapshot.root).toMatchObject({ id: ROOT_ID, kind: 'dir', label: path.basename(fixtureDir) })
-        const session = flattenTree(snapshot.root).find((node) => node.id === 'file:src/auth/session.ts')
-        expect(session).toMatchObject({ kind: 'file', path: 'src/auth/session.ts' })
-        expect(session?.loc).toBeGreaterThan(0)
+        const auth = flattenTree(snapshot.root).find((node) => node.id === 'own:dir:src/auth')
+        expect(auth).toMatchObject({ kind: 'dir', label: 'auth', path: 'src/auth' })
+        expect(auth?.files?.map((file) => file.path)).toEqual(['src/auth/session.ts'])
+        expect(allFiles(snapshot.root).find((file) => file.path === 'src/auth/session.ts')?.loc).toBeGreaterThan(0)
         expect(snapshot).toMatchObject({ bugs: [], pins: {}, errors: [] })
         expect(Date.parse(snapshot.generatedAt)).not.toBeNaN()
     })
@@ -56,6 +61,14 @@ describe('createSnapshotSource', () => {
             kind: 'http',
             label: 'POST /api/login',
         })
+    })
+
+    it('keeps file-level edges between files that sit inside component leaves', async () => {
+        writeConfig('components.json', manifest)
+        const { root, edges } = await source.rescan()
+        expect(nodeIds(root)).not.toContain('file:src/auth/session.ts')
+        expect(edges).toContainEqual(expect.objectContaining({ from: 'file:src/auth/session.ts', kind: 'import' }))
+        expect(edges).toContainEqual(expect.objectContaining({ from: 'file:web/src/LoginPage.tsx', kind: 'http' }))
     })
 
     it('keeps the last valid manifest when components.json breaks', async () => {
@@ -73,8 +86,9 @@ describe('createSnapshotSource', () => {
 
     it('applies the manifest ignore globs', async () => {
         writeConfig('components.json', { ...manifest, ignore: ['web/**'] })
-        const ids = nodeIds((await source.rescan()).root)
-        expect(ids.filter((id) => id.startsWith('file:web/'))).toEqual([])
+        const paths = allFiles((await source.rescan()).root).map((file) => file.path)
+        expect(paths).toContain('src/auth/session.ts')
+        expect(paths.filter((filePath) => filePath.startsWith('web/'))).toEqual([])
     })
 
     it('keeps the last valid manifest when components.json has semantic errors', async () => {
@@ -121,6 +135,19 @@ describe('createSnapshotSource', () => {
         const snapshot = await source.rescan()
         expect(snapshot.bugs).toEqual([{ id: 'b1', title: 'Login loops', marks: [{ nodeId: 'auth', state: 'suspected' }] }])
         expect(snapshot.errors).toEqual([expect.stringContaining('auth.missing')])
+    })
+
+    it('resolves a bug mark on a file inside a leaf', async () => {
+        writeConfig('components.json', manifest)
+        writeConfig('bugs.json', {
+            version: 1,
+            bugs: [{ id: 'b1', title: 'Session lost', status: 'open', marks: [
+                { file: 'src/auth/session.ts', state: 'confirmed', reason: 'drops the cookie' },
+            ] }],
+        })
+        const snapshot = await source.rescan()
+        expect(snapshot.bugs[0].marks).toEqual([{ nodeId: 'file:src/auth/session.ts', state: 'confirmed', reason: 'drops the cookie' }])
+        expect(snapshot.errors).toEqual([])
     })
 
     it('carries pins from layout.json and keeps them when the file breaks', async () => {

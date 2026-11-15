@@ -4,7 +4,7 @@ import type { z } from 'zod'
 import { bugsFileSchema, layoutFileSchema, manifestSchema, ROOT_ID } from '../shared/schema.ts'
 import type { PinRequest, Snapshot } from '../shared/schema.ts'
 import { resolveBugs } from './bugs.ts'
-import { buildTree, checkManifest, flattenTree } from './components.ts'
+import { buildTree, checkManifest, treeIds } from './components.ts'
 import { createEdgeIndex } from './edges.ts'
 import { createInventory } from './inventory.ts'
 import { configDir, errorMessage, formatJson, readJsonFile } from './json-file.ts'
@@ -36,13 +36,13 @@ export function createSnapshotSource(repoRoot: string, options: { trackedOnly: b
         const layout = readLayout(errors)
         const files = await inventory.scan(manifest?.ignore ?? [])
         const root = buildTree(repoName, files, manifest)
-        const nodeIds = new Set(flattenTree(root).map((node) => node.id))
+        const nodeIds = treeIds(root)
         // A manual http edge can name a component that has no files and so no node
         const edges = (await edgeIndex.update(files, manifest)).edges
             .filter((edge) => nodeIds.has(edge.from) && nodeIds.has(edge.to))
         const { bugs, errors: bugErrors } = resolveBugs(bugsFile, nodeIds)
         errors.push(...bugErrors)
-        return { root, edges, bugs, pins: layout?.pins ?? {}, errors, generatedAt: new Date().toISOString() }
+        return { root, edges, bugs, pins: layout?.pins ?? {}, errors, generatedAt: new Date().toISOString(), commits: [] }
     }
 
     async function buildOrKeepLast(): Promise<Snapshot> {
@@ -114,5 +114,6 @@ function emptySnapshot(repoName: string): Snapshot {
         pins: {},
         errors: [],
         generatedAt: new Date().toISOString(),
+        commits: [],
     }
 }

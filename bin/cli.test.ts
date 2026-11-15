@@ -120,6 +120,30 @@ describe('dev-bubbles CLI', { timeout: 30_000 }, () => {
         expect(stdout).toContain('  auth, Auth: 6\n  billing, Billing: 0\n')
         expect(stdout).toContain('  src/lib/url.ts\n')
         expect(stdout).toContain('web/src/App.tsx  POST /api/analytics')
+        expect(stdout).toMatch(/Components with both sub-components and own files[^\n]*\n {2}\(none\)\n/)
+    })
+
+    it('summary lists the own files of components that also have sub-components', () => {
+        writeConfig('components.json', {
+            version: 1,
+            components: [{
+                id: 'auth',
+                label: 'Auth',
+                include: ['src/auth/**'],
+                children: [{ id: 'auth.google', label: 'Google', include: ['src/auth/oauth/google/**'] }],
+            }],
+        })
+        const { status, stdout } = runCli('summary', repo)
+        expect(status).toBe(0)
+        expect(stdout).toContain('  auth, Auth: 6\n    auth.google, Google: 2\n')
+        expect(stdout).toContain([
+            'move them into a sub-component):',
+            '  auth, Auth: 4 files',
+            '    src/auth/oauth/apple/callback.ts',
+            '    src/auth/oauth/apple/client.ts',
+            '    src/auth/oauth/providers.ts',
+            '    src/auth/session.ts',
+        ].join('\n'))
     })
 
     it('rejects a directory outside any git repository', () => {

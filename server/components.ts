@@ -1,8 +1,7 @@
 import micromatch from 'micromatch'
-import { dirId, fileId, ROOT_ID, UNMAPPED_ID } from '../shared/schema.ts'
-import type { ComponentDef, Manifest, TreeNode } from '../shared/schema.ts'
+import { dirId, fileId, ownFilesId, ROOT_ID, UNMAPPED_ID } from '../shared/schema.ts'
+import type { ComponentDef, FileRef, Manifest, TreeNode } from '../shared/schema.ts'
 import { compareStrings } from './inventory.ts'
-import type { InventoryFile } from './inventory.ts'
 
 export type ComponentEntry = {
     def: ComponentDef
@@ -15,20 +14,28 @@ type CompiledComponent = ComponentEntry & {
 }
 
 type Assignment = {
-    owned: Map<ComponentDef, InventoryFile[]>
-    unmapped: InventoryFile[]
+    owned: Map<ComponentDef, FileRef[]>
+    unmapped: FileRef[]
+}
+
+type Directory = {
+    path: string
+    subdirs: Map<string, Directory>
+    files: FileRef[]
 }
 
 const globOptions = { dot: true }
 
-export function buildTree(repoName: string, files: InventoryFile[], manifest: Manifest | undefined): TreeNode {
+export function buildTree(repoName: string, files: FileRef[], manifest: Manifest | undefined): TreeNode {
     const root: TreeNode = { id: ROOT_ID, kind: 'dir', label: repoName, path: '' }
-    if (!manifest?.components.length) return { ...root, children: buildDirectoryChildren(files) }
-    const { owned, unmapped } = assignFiles(files, manifest.components)
-    const children = manifest.components.flatMap((def) => buildComponentNode(def, owned) ?? [])
-    if (unmapped.length > 0) {
-        children.push({ id: UNMAPPED_ID, kind: 'component', label: 'Unmapped', children: buildDirectoryChildren(unmapped) })
+    const refs = files.map(({ path, loc }) => ({ path, loc })).sort(compareByPath)
+    if (!manifest?.components.length) {
+        const top = groupByDirectory(refs)
+        return { ...root, children: withOwnFiles(root, buildSubdirNodes(top), top.files) }
     }
+    const { owned, unmapped } = assignFiles(refs, manifest.components)
+    const children = manifest.components.flatMap((def) => buildComponentNode(def, owned) ?? [])
+    if (unmapped.length > 0) children.push({ id: UNMAPPED_ID, kind: 'component', label: 'Unmapped', files: unmapped })
     return { ...root, children }
 }
 
@@ -58,12 +65,17 @@ export function flattenTree(node: TreeNode): TreeNode[] {
     return [node, ...(node.children ?? []).flatMap(flattenTree)]
 }
 
+// Bug marks and edges can name a file inside a leaf as well as a bubble
+export function treeIds(root: TreeNode): Set<string> {
+    return new Set(flattenTree(root).flatMap((node) => [node.id, ...(node.files ?? []).map((file) => fileId(file.path))]))
+}
+
 /* Assignment */
 
-function assignFiles(files: InventoryFile[], components: ComponentDef[]): Assignment {
+function assignFiles(files: FileRef[], components: ComponentDef[]): Assignment {
     const compiled = listComponents(components).map(compileComponent)
-    const owned = new Map<ComponentDef, InventoryFile[]>()
-    const unmapped: InventoryFile[] = []
+    const owned = new Map<ComponentDef, FileRef[]>()
+    const unmapped: FileRef[] = []
     for (const file of files) {
         const owner = findOwner(file.path, compiled)
         if (!owner) {
@@ -95,51 +107,49 @@ function findOwner(filePath: string, components: CompiledComponent[]): Component
 
 /* Tree nodes */
 
-function buildComponentNode(def: ComponentDef, owned: Map<ComponentDef, InventoryFile[]>): TreeNode | undefined {
-    const childComponents = (def.children ?? []).flatMap((child) => buildComponentNode(child, owned) ?? [])
-    const ownFiles = (owned.get(def) ?? []).toSorted(compareByPath).map(buildFileNode)
-    const children = [...childComponents, ...ownFiles]
-    if (children.length === 0) return undefined
-    return { id: def.id, kind: 'component', label: def.label, children }
+function buildComponentNode(def: ComponentDef, owned: Map<ComponentDef, FileRef[]>): TreeNode | undefined {
+    const children = (def.children ?? []).flatMap((child) => buildComponentNode(child, owned) ?? [])
+    const files = owned.get(def) ?? []
+    if (children.length === 0 && files.length === 0) return undefined
+    return groupOrLeaf({ id: def.id, kind: 'component', label: def.label }, children, files)
 }
 
-function buildDirectoryChildren(files: InventoryFile[]): TreeNode[] {
-    const childrenByDir = new Map<string, TreeNode[]>([['', []]])
+function groupByDirectory(files: FileRef[]): Directory {
+    const root: Directory = { path: '', subdirs: new Map(), files: [] }
     for (const file of files) {
-        directoryChildren(parentPath(file.path), childrenByDir).push(buildFileNode(file))
+        let dir = root
+        for (const name of file.path.split('/').slice(0, -1)) {
+            let subdir = dir.subdirs.get(name)
+            if (!subdir) {
+                subdir = { path: dir.path ? `${dir.path}/${name}` : name, subdirs: new Map(), files: [] }
+                dir.subdirs.set(name, subdir)
+            }
+            dir = subdir
+        }
+        dir.files.push(file)
     }
-    for (const children of childrenByDir.values()) children.sort(compareNodes)
-    return childrenByDir.get('') ?? []
+    return root
 }
 
-function directoryChildren(dirPath: string, childrenByDir: Map<string, TreeNode[]>): TreeNode[] {
-    const existing = childrenByDir.get(dirPath)
-    if (existing) return existing
-    const children: TreeNode[] = []
-    childrenByDir.set(dirPath, children)
-    const dirNode: TreeNode = { id: dirId(dirPath), kind: 'dir', label: baseName(dirPath), path: dirPath, children }
-    directoryChildren(parentPath(dirPath), childrenByDir).push(dirNode)
-    return children
+function buildSubdirNodes(dir: Directory): TreeNode[] {
+    return [...dir.subdirs]
+        .sort(([nameA], [nameB]) => compareStrings(nameA, nameB))
+        .map(([name, subdir]) => groupOrLeaf(
+            { id: dirId(subdir.path), kind: 'dir', label: name, path: subdir.path },
+            buildSubdirNodes(subdir),
+            subdir.files,
+        ))
 }
 
-function buildFileNode(file: InventoryFile): TreeNode {
-    return { id: fileId(file.path), kind: 'file', label: baseName(file.path), path: file.path, loc: file.loc }
+function groupOrLeaf(node: TreeNode, children: TreeNode[], files: FileRef[]): TreeNode {
+    return children.length > 0 ? { ...node, children: withOwnFiles(node, children, files) } : { ...node, files }
 }
 
-function parentPath(filePath: string): string {
-    const slash = filePath.lastIndexOf('/')
-    return slash < 0 ? '' : filePath.slice(0, slash)
+// A bubble never holds both, so a group's own files go to an extra leaf that shares its label
+function withOwnFiles(group: TreeNode, children: TreeNode[], files: FileRef[]): TreeNode[] {
+    return files.length > 0 ? [...children, { ...group, id: ownFilesId(group.id), files }] : children
 }
 
-function baseName(filePath: string): string {
-    return filePath.slice(filePath.lastIndexOf('/') + 1)
-}
-
-function compareNodes(a: TreeNode, b: TreeNode): number {
-    if (a.kind !== b.kind) return a.kind === 'dir' ? -1 : 1
-    return compareStrings(a.label, b.label)
-}
-
-function compareByPath(a: InventoryFile, b: InventoryFile): number {
+function compareByPath(a: FileRef, b: FileRef): number {
     return compareStrings(a.path, b.path)
 }

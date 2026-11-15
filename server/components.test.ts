@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ComponentDef, Manifest, TreeNode } from '../shared/schema.ts'
-import { buildTree, checkManifest, flattenTree } from './components.ts'
+import { buildTree, checkManifest, flattenTree, treeIds } from './components.ts'
 import type { InventoryFile } from './inventory.ts'
 
 function files(...paths: string[]): InventoryFile[] {
@@ -12,25 +12,54 @@ function manifest(components: ComponentDef[], extra: Partial<Manifest> = {}): Ma
 }
 
 function ownerOf(root: TreeNode, filePath: string): string | undefined {
-    const parent = flattenTree(root).find((node) => node.children?.some((child) => child.id === `file:${filePath}`))
-    return parent?.id
+    return flattenTree(root).find((node) => node.files?.some((file) => file.path === filePath))?.id
 }
 
 function childIds(node: TreeNode | undefined): string[] {
     return node?.children?.map((child) => child.id) ?? []
 }
 
+function filePaths(node: TreeNode | undefined): string[] {
+    return node?.files?.map((file) => file.path) ?? []
+}
+
+const authWithGoogle: ComponentDef = {
+    id: 'auth', label: 'Auth', include: ['src/auth/**'], children: [
+        { id: 'auth.google', label: 'Google', include: ['src/auth/oauth/google/**'] },
+    ],
+}
+
 describe('buildTree without components', () => {
-    it('returns the directory tree with directories first and names sorted', () => {
+    it('groups files into directories sorted by name with the own files of a directory in a last leaf', () => {
         const root = buildTree('repo', files('src/b.ts', 'README.md', 'src/a.ts', 'src/lib/x.ts', 'a.txt'), undefined)
         expect(root).toMatchObject({ id: 'dir:', kind: 'dir', label: 'repo', path: '' })
-        expect(childIds(root)).toEqual(['dir:src', 'file:README.md', 'file:a.txt'])
+        expect(childIds(root)).toEqual(['dir:src', 'own:dir:'])
+        expect(root.children?.[1]).toEqual({
+            id: 'own:dir:',
+            kind: 'dir',
+            label: 'repo',
+            path: '',
+            files: [{ path: 'README.md', loc: 10 }, { path: 'a.txt', loc: 10 }],
+        })
         const src = root.children?.[0]
         expect(src).toMatchObject({ kind: 'dir', label: 'src', path: 'src' })
-        expect(childIds(src)).toEqual(['dir:src/lib', 'file:src/a.ts', 'file:src/b.ts'])
-        expect(src?.children?.[0].children?.[0]).toEqual({
-            id: 'file:src/lib/x.ts', kind: 'file', label: 'x.ts', path: 'src/lib/x.ts', loc: 10,
+        expect(src?.files).toBeUndefined()
+        expect(childIds(src)).toEqual(['dir:src/lib', 'own:dir:src'])
+        expect(src?.children?.[0]).toEqual({
+            id: 'dir:src/lib', kind: 'dir', label: 'lib', path: 'src/lib', files: [{ path: 'src/lib/x.ts', loc: 10 }],
         })
+        expect(src?.children?.[1]).toMatchObject({ kind: 'dir', label: 'src', path: 'src' })
+        expect(filePaths(src?.children?.[1])).toEqual(['src/a.ts', 'src/b.ts'])
+    })
+
+    it('keeps the root a group when every file sits at the top', () => {
+        const root = buildTree('repo', files('b.ts', 'a.ts'), undefined)
+        expect(childIds(root)).toEqual(['own:dir:'])
+        expect(filePaths(root.children?.[0])).toEqual(['a.ts', 'b.ts'])
+    })
+
+    it('returns an empty root for an empty repo', () => {
+        expect(buildTree('repo', [], undefined)).toEqual({ id: 'dir:', kind: 'dir', label: 'repo', path: '', children: [] })
     })
 
     it('treats a manifest with zero components like no manifest', () => {
@@ -41,16 +70,9 @@ describe('buildTree without components', () => {
 
 describe('buildTree assignment', () => {
     it('gives a file to the deepest matching component', () => {
-        const root = buildTree('repo', files('src/auth/session.ts', 'src/auth/oauth/google/client.ts'), manifest([
-            {
-                id: 'auth', label: 'Auth', include: ['src/auth/**'], children: [
-                    { id: 'auth.google', label: 'Google', include: ['src/auth/oauth/google/**'] },
-                ],
-            },
-        ]))
-        expect(ownerOf(root, 'src/auth/session.ts')).toBe('auth')
+        const root = buildTree('repo', files('src/auth/session.ts', 'src/auth/oauth/google/client.ts'), manifest([authWithGoogle]))
+        expect(ownerOf(root, 'src/auth/session.ts')).toBe('own:auth')
         expect(ownerOf(root, 'src/auth/oauth/google/client.ts')).toBe('auth.google')
-        expect(childIds(root.children?.[0])).toEqual(['auth.google', 'file:src/auth/session.ts'])
     })
 
     it('breaks a tie at the same depth by document order', () => {
@@ -87,15 +109,39 @@ describe('buildTree assignment', () => {
 })
 
 describe('buildTree grouping', () => {
-    it('puts files that match no component under Unmapped as a directory tree', () => {
+    it('makes a component without sub-components a leaf with its files sorted by path', () => {
+        const root = buildTree('repo', files('src/lib/url.ts', 'src/lib/a/b.ts', 'src/lib/http.ts'), manifest([
+            { id: 'lib', label: 'Helpers', include: ['src/lib/**'] },
+        ]))
+        expect(root.children).toEqual([{
+            id: 'lib',
+            kind: 'component',
+            label: 'Helpers',
+            files: [{ path: 'src/lib/a/b.ts', loc: 10 }, { path: 'src/lib/http.ts', loc: 10 }, { path: 'src/lib/url.ts', loc: 10 }],
+        }])
+    })
+
+    it('puts the own files of a component with sub-components in a last leaf named after it', () => {
+        const root = buildTree('repo', files('src/auth/session.ts', 'src/auth/oauth/google/client.ts'), manifest([authWithGoogle]))
+        const auth = root.children?.[0]
+        expect(auth?.files).toBeUndefined()
+        expect(childIds(auth)).toEqual(['auth.google', 'own:auth'])
+        expect(auth?.children?.[1]).toEqual({
+            id: 'own:auth', kind: 'component', label: 'Auth', files: [{ path: 'src/auth/session.ts', loc: 10 }],
+        })
+    })
+
+    it('puts files that match no component in one Unmapped leaf', () => {
         const root = buildTree('repo', files('src/lib/url.ts', 'web/src/App.tsx', 'web/main.tsx', 'README.md'), manifest([
             { id: 'lib', label: 'lib', include: ['src/lib/**'] },
         ]))
         expect(childIds(root)).toEqual(['lib', 'unmapped'])
-        const unmapped = root.children?.[1]
-        expect(unmapped).toMatchObject({ id: 'unmapped', kind: 'component', label: 'Unmapped' })
-        expect(childIds(unmapped)).toEqual(['dir:web', 'file:README.md'])
-        expect(childIds(unmapped?.children?.[0])).toEqual(['dir:web/src', 'file:web/main.tsx'])
+        expect(root.children?.[1]).toEqual({
+            id: 'unmapped',
+            kind: 'component',
+            label: 'Unmapped',
+            files: [{ path: 'README.md', loc: 10 }, { path: 'web/main.tsx', loc: 10 }, { path: 'web/src/App.tsx', loc: 10 }],
+        })
     })
 
     it('leaves out Unmapped when every file is mapped', () => {
@@ -113,19 +159,32 @@ describe('buildTree grouping', () => {
             { id: 'billing', label: 'Billing', include: ['src/billing/**'] },
         ]))
         expect(childIds(root)).toEqual(['auth'])
-        expect(childIds(root.children?.[0])).toEqual(['file:src/auth/session.ts'])
+        expect(root.children?.[0].children).toBeUndefined()
+        expect(filePaths(root.children?.[0])).toEqual(['src/auth/session.ts'])
     })
 
     it('keeps a parent whose files all belong to its children', () => {
-        const root = buildTree('repo', files('src/auth/oauth/google/client.ts'), manifest([
-            {
-                id: 'auth', label: 'Auth', include: ['src/auth/**'], children: [
-                    { id: 'auth.google', label: 'Google', include: ['src/auth/oauth/google/**'] },
-                ],
-            },
-        ]))
+        const root = buildTree('repo', files('src/auth/oauth/google/client.ts'), manifest([authWithGoogle]))
         expect(childIds(root)).toEqual(['auth'])
         expect(childIds(root.children?.[0])).toEqual(['auth.google'])
+        expect(root.children?.[0].files).toBeUndefined()
+    })
+})
+
+describe('treeIds', () => {
+    it('lists every bubble id and the file id of every file reference', () => {
+        const input = files('src/auth/session.ts', 'src/auth/oauth/google/client.ts', 'README.md')
+        const ids = treeIds(buildTree('repo', input, manifest([authWithGoogle])))
+        expect([...ids].sort()).toEqual([
+            'auth',
+            'auth.google',
+            'dir:',
+            'file:README.md',
+            'file:src/auth/oauth/google/client.ts',
+            'file:src/auth/session.ts',
+            'own:auth',
+            'unmapped',
+        ])
     })
 })
 
