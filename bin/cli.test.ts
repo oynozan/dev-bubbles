@@ -1,4 +1,5 @@
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
+import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -125,4 +126,35 @@ describe('dev-bubbles CLI', { timeout: 30_000 }, () => {
         expect(status).toBe(1)
         expect(stderr).toContain('Not inside a git repository')
     })
+
+    it('serve prints the URL it listens on and streams snapshots there', async () => {
+        const freshRepo = makeRepo()
+        const child = spawn(process.execPath, ['--import', 'tsx', cliPath, 'serve', freshRepo, '--port', '0'], {
+            cwd: packageRoot,
+        })
+        try {
+            const line = await readLine(child)
+            expect(line).toContain(`Dev Bubbles serving ${freshRepo} at http://127.0.0.1:`)
+            const url = line.slice(line.lastIndexOf(' ') + 1)
+            const response = await fetch(`${url}/api/events`)
+            const reader = response.body?.pipeThrough(new TextDecoderStream()).getReader()
+            const firstChunk = await reader?.read()
+            expect(firstChunk?.value).toMatch(/^data: \{"root":/)
+            await reader?.cancel()
+        } finally {
+            child.kill()
+        }
+    })
 })
+
+function readLine(child: ChildProcessWithoutNullStreams): Promise<string> {
+    return new Promise((resolve, reject) => {
+        let output = ''
+        child.stdout.setEncoding('utf8')
+        child.stdout.on('data', (chunk: string) => {
+            output += chunk
+            if (output.includes('\n')) resolve(output.slice(0, output.indexOf('\n')).trim())
+        })
+        child.once('exit', (code) => reject(new Error(`serve exited with ${code}`)))
+    })
+}

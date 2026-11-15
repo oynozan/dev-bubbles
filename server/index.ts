@@ -45,10 +45,12 @@ const maxLayoutBodySize = 64 * 1024
 // Other hostnames are refused so a DNS rebinding page cannot read the repo
 const localHostnames = new Set(['127.0.0.1', 'localhost'])
 
+// Resolves once listening, the first scan and then the watcher start in the background
 export async function startServer({ repo, port, trackedOnly }: ServerOptions): Promise<Server> {
     const repoRoot = await findRepoRoot(repo)
+    const gitIndexPath = await findGitIndexPath(repoRoot)
     const snapshots = createSnapshotSource(repoRoot, { trackedOnly })
-    const events = createEventStream(await snapshots.rescan())
+    const events = createEventStream()
     const refresh = async () => events.publish(await snapshots.rescan())
     const server = createServer((request, response) => {
         handleRequest({ snapshots, events, refresh }, request, response).catch((error: unknown) => {
@@ -56,10 +58,13 @@ export async function startServer({ repo, port, trackedOnly }: ServerOptions): P
         })
     })
     await listen(server, port)
-    const watcher = await watchRepo(repoRoot, await findGitIndexPath(repoRoot), () => void refresh())
-    server.on('close', () => void watcher.close())
-    // Changes made before the watcher was ready sent no event
-    void refresh()
+    const watcher = refresh().then(async () => {
+        const repoWatcher = await watchRepo(repoRoot, gitIndexPath, () => void refresh())
+        // Changes made before the watcher was ready sent no event
+        void refresh()
+        return repoWatcher
+    })
+    server.on('close', () => void watcher.then((repoWatcher) => repoWatcher.close()))
     return server
 }
 
@@ -111,14 +116,15 @@ function readPathname(url: string): string | undefined {
 
 /* Server-Sent Events */
 
-function createEventStream(initialSnapshot: Snapshot): EventStream {
+// A client that connects before the first scan gets no headers until it is done, so the app keeps showing connecting
+function createEventStream(): EventStream {
     const clients = new Set<ServerResponse>()
-    let lastContent = contentKey(initialSnapshot)
-    let lastMessage = formatEvent(initialSnapshot)
+    let lastContent: string | undefined
+    let lastMessage: string | undefined
     return {
         open(response) {
             response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' })
-            response.write(lastMessage)
+            if (lastMessage) response.write(lastMessage)
             clients.add(response)
             response.on('close', () => clients.delete(response))
         },

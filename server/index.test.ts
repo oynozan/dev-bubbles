@@ -71,11 +71,13 @@ describe('startServer', () => {
     let fixtureDir: string
     let server: Server
     let baseUrl: string
+    let listeningAt: number
     let events: EventReader
 
     beforeAll(async () => {
         fixtureDir = makeFixture()
         server = await startServer({ repo: path.join(fixtureDir, 'src'), port: 0, trackedOnly: false })
+        listeningAt = Date.now()
         const { port } = server.address() as AddressInfo
         baseUrl = `http://127.0.0.1:${port}`
     })
@@ -95,8 +97,9 @@ describe('startServer', () => {
         events.close()
     })
 
-    it('sends the current snapshot of the repo root on connect', async () => {
+    it('listens before the first scan and sends that scan once it is done', async () => {
         const snapshot = await events.next()
+        expect(Date.parse(snapshot.generatedAt)).toBeGreaterThanOrEqual(listeningAt)
         expect(snapshot.root).toMatchObject({ id: ROOT_ID, label: path.basename(fixtureDir) })
         expect(findNode(snapshot.root, 'file:src/auth/session.ts')?.loc).toBeGreaterThan(0)
         expect(snapshot.errors).toEqual([])
