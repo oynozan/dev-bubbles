@@ -58,20 +58,21 @@ export const isDrawn = (node: PositionedNode): boolean => {
 /* Tree processing */
 
 const processChild = (node: TreeNode, index = 0): BubbleDatum => {
-    let { id, label, path } = node
+    let { id, label, path, size } = node
     let children = node.children?.map(processChild)
     if (children?.length === 1) {
         const [onlyChild] = children
         label = `${label}/${onlyChild.label}`
         id = onlyChild.id
         path = onlyChild.path
+        size = onlyChild.value
         children = onlyChild.children
     }
     if (node.path === '' && children) {
         children = groupLooseFiles(children)
     }
     const extension = label.slice(label.lastIndexOf('.') + 1)
-    const value = sizeValue(node.size, extension) + index
+    const value = sizeValue(size, extension) + index
     return {
         id,
         path,

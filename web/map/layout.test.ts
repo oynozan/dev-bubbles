@@ -10,7 +10,7 @@ const file = (path: string, size: number): TreeNode => {
 }
 
 const dir = (path: string, children: TreeNode[]): TreeNode => {
-    return { id: `dir:${path}`, label: nameOf(path), path, size: 0, children }
+    return { id: `dir:${path}`, label: nameOf(path), path, size: 4096, children }
 }
 
 const files = (folder: string, count: number): TreeNode[] => {
@@ -41,6 +41,14 @@ describe('layoutTree', () => {
         expect(collapsed?.data.path).toBe('src/lib/core')
         expect(collapsed?.children).toHaveLength(5)
         expect(findById(nodes, 'dir:src/lib')).toBeUndefined()
+    })
+
+    it('sizes a single-file folder by its file', () => {
+        const tree = dir('', [dir('bin', [file('bin/cli.ts', 1200)]), dir('web', files('web', 3))])
+        const collapsed = findById(layoutTree(tree), 'file:bin/cli.ts')
+
+        expect(collapsed?.data.label).toBe('bin/cli.ts')
+        expect(collapsed?.data.value).toBe(1200)
     })
 
     it('groups loose root files into a group that is not drawn', () => {
