@@ -8,7 +8,9 @@
         "dev-bubbles": "dist/bin/cli.js"
     },
     "files": [
-        "dist"
+        "dist",
+        "templates",
+        "skills"
     ],
     "engines": {
         "node": ">=22.12"
