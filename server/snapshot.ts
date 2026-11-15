@@ -4,7 +4,7 @@ import type { z } from 'zod'
 import { bugsFileSchema, layoutFileSchema, manifestSchema, ROOT_ID } from '../shared/schema.ts'
 import type { PinRequest, Snapshot } from '../shared/schema.ts'
 import { resolveBugs } from './bugs.ts'
-import { buildTree, checkManifest } from './components.ts'
+import { buildTree, checkManifest, flattenTree } from './components.ts'
 import { createEdgeIndex } from './edges.ts'
 import { createInventory } from './inventory.ts'
 import { readJsonFile } from './json-file.ts'
@@ -22,7 +22,7 @@ export function createSnapshotSource(repoRoot: string, options: { trackedOnly: b
     const layoutPath = path.join(configDir, 'layout.json')
     const inventory = createInventory(repoRoot, options)
     const edgeIndex = createEdgeIndex(repoRoot)
-    const readManifest = createLastValidReader(path.join(configDir, 'components.json'), manifestSchema)
+    const readManifest = createLastValidReader(path.join(configDir, 'components.json'), manifestSchema, checkManifest)
     const readBugs = createLastValidReader(path.join(configDir, 'bugs.json'), bugsFileSchema)
     const readLayout = createLastValidReader(layoutPath, layoutFileSchema)
     let lastBuilt = emptySnapshot(repoName)
@@ -36,8 +36,10 @@ export function createSnapshotSource(repoRoot: string, options: { trackedOnly: b
         const layout = readLayout(errors)
         const files = await inventory.scan(manifest?.ignore ?? [])
         const root = buildTree(repoName, files, manifest)
-        if (manifest) errors.push(...checkManifest(manifest))
-        const { edges } = edgeIndex.update(files, manifest)
+        const nodeIds = new Set(flattenTree(root).map((node) => node.id))
+        // A manual http edge can name a component that has no files and so no node
+        const edges = edgeIndex.update(files, manifest).edges
+            .filter((edge) => nodeIds.has(edge.from) && nodeIds.has(edge.to))
         const { bugs, errors: bugErrors } = resolveBugs(bugsFile, root)
         errors.push(...bugErrors)
         return { root, edges, bugs, pins: layout?.pins ?? {}, errors, generatedAt: new Date().toISOString() }
@@ -78,12 +80,21 @@ export function createSnapshotSource(repoRoot: string, options: { trackedOnly: b
 }
 
 // An invalid file keeps its last valid value in use while its errors are reported
-function createLastValidReader<T>(filePath: string, schema: z.ZodType<T>): LastValidReader<T> {
+function createLastValidReader<T>(
+    filePath: string,
+    schema: z.ZodType<T>,
+    check: (value: T) => string[] = () => [],
+): LastValidReader<T> {
     let lastValid: T | undefined
     return (errors) => {
         const result = readJsonFile(filePath, schema)
-        if (result.status === 'invalid') errors.push(...result.errors)
-        else lastValid = result.status === 'ok' ? result.value : undefined
+        if (result.status === 'missing') {
+            lastValid = undefined
+            return lastValid
+        }
+        const problems = result.status === 'ok' ? check(result.value) : result.errors
+        errors.push(...problems)
+        if (result.status === 'ok' && problems.length === 0) lastValid = result.value
         return lastValid
     }
 }

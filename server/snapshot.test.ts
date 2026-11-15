@@ -80,9 +80,33 @@ describe('createSnapshotSource', () => {
         expect(ids.filter((id) => id.startsWith('file:web/'))).toEqual([])
     })
 
-    it('reports semantic manifest errors', async () => {
+    it('keeps the last valid manifest when components.json has semantic errors', async () => {
+        writeConfig('components.json', manifest)
+        await source.rescan()
+        const duplicate = { id: 'auth', label: 'Login', include: ['src/lib/**'] }
+        writeConfig('components.json', { ...manifest, components: [...manifest.components, duplicate] })
+        const broken = await source.rescan()
+        expect(flatten(broken.root).filter((node) => node.id === 'auth')).toEqual([
+            expect.objectContaining({ label: 'Auth' }),
+        ])
+        expect(broken.errors).toEqual([expect.stringContaining('duplicate component id auth')])
         writeConfig('components.json', { ...manifest, httpEdges: [{ from: 'auth', to: 'nowhere' }] })
         expect((await source.rescan()).errors).toEqual([expect.stringContaining('nowhere')])
+    })
+
+    it('keeps manual http edges only between components on the map', async () => {
+        writeConfig('components.json', {
+            version: 1,
+            components: [
+                ...manifest.components,
+                { id: 'lib', label: 'lib', include: ['src/lib/**'] },
+                { id: 'empty', label: 'Empty', include: ['nothing/**'] },
+            ],
+            httpEdges: [{ from: 'auth', to: 'lib', note: 'redirect helper' }, { from: 'auth', to: 'empty' }],
+        })
+        const { edges } = await source.rescan()
+        expect(edges).toContainEqual({ from: 'auth', to: 'lib', kind: 'http', label: 'redirect helper' })
+        expect(edges.filter((edge) => edge.to === 'empty')).toEqual([])
     })
 
     it('resolves open bug marks and reports unknown targets', async () => {
