@@ -1,18 +1,20 @@
 /*
  * Interactive bubble map.
- * React renders the nested <g> tree for open groups only, with the edges between the drawn
- * bubbles in a layer above it. MapController owns everything that changes faster than React
- * should, the node positions, one force simulation per open sibling group, d3-zoom on the
- * svg, d3-drag per bubble and the edge hover highlight, and writes transforms and edge paths
- * straight to the DOM.
+ * React renders the nested <g> tree for open groups only, with bug marks on the bubbles and
+ * the edges between the drawn bubbles in a layer above it. MapController owns everything that
+ * changes faster than React should, the node positions, one force simulation per open sibling
+ * group, d3-zoom on the svg, d3-drag per bubble and the edge hover highlight, and writes
+ * transforms, edge paths and the counter-scaled mark stripes and badges straight to the DOM.
  */
 import { drag, forceCollide, forceSimulation, forceX, forceY, select, zoom, zoomIdentity } from 'd3'
 import type { D3DragEvent, D3ZoomEvent, Simulation, SubjectPosition, ZoomTransform } from 'd3'
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ROOT_ID } from '../../shared/schema.ts'
-import type { Pin, PinRequest, Snapshot } from '../../shared/schema.ts'
+import type { Pin, PinRequest, Snapshot, SnapshotBug } from '../../shared/schema.ts'
 import type { Point } from '../lib/utils.ts'
 import { Breadcrumb } from '../panels/Breadcrumb.tsx'
+import { BugPanel } from '../panels/BugPanel.tsx'
+import { Legend } from '../panels/Legend.tsx'
 import { Bubble } from './Bubble.tsx'
 import type { BubbleActions } from './Bubble.tsx'
 import { EdgeLayer } from './EdgeLayer.tsx'
@@ -32,6 +34,8 @@ import {
     syncBubbles,
 } from './layout.ts'
 import type { BubbleState, LayoutNode, Lineages, Size } from './layout.ts'
+import { fitMarks, markNodes, rollUpHiddenMarks } from './marks.ts'
+import { mapStripesId, StripePattern, stripeTransform } from './patterns.tsx'
 
 type BubbleMapProps = {
     snapshot: Snapshot
@@ -51,36 +55,67 @@ const maxZoom = 500
 export const BubbleMap = ({ snapshot }: BubbleMapProps) => {
     const svgRef = useRef<SVGSVGElement>(null)
     const layerRef = useRef<SVGGElement>(null)
+    const stripesRef = useRef<SVGPatternElement>(null)
     const [openIds, setOpenIds] = useState<ReadonlySet<string>>(() => new Set([ROOT_ID]))
     const [focusId, setFocusId] = useState(ROOT_ID)
+    const [selectedBugId, setSelectedBugId] = useState<string>()
     const [controller] = useState(() => new MapController(setOpenIds, setFocusId))
     const tree = useMemo(() => packTree(snapshot.root), [snapshot.root])
+    const nodesById = useMemo(() => indexNodes(tree), [tree])
     const lineages = useMemo(() => indexLineages(tree), [tree])
     const edges = useMemo(() => aggregateEdges(snapshot.edges, lineages, openIds), [snapshot.edges, lineages, openIds])
+    const selectedBug = snapshot.bugs.find((bug) => bug.id === selectedBugId)
+    const marks = useMemo(() => markNodes(snapshot.bugs, selectedBug?.id), [snapshot.bugs, selectedBug?.id])
+    const hiddenMarks = useMemo(() => rollUpHiddenMarks(marks, lineages, openIds), [marks, lineages, openIds])
     const trail = findTrail(tree, focusId)
 
     useLayoutEffect(() => {
         const svg = svgRef.current
         const layer = layerRef.current
-        return svg && layer ? controller.attach(svg, layer) : undefined
+        const stripes = stripesRef.current
+        return svg && layer && stripes ? controller.attach(svg, layer, stripes) : undefined
     }, [controller])
 
     useLayoutEffect(
-        () => controller.setSnapshot(tree, lineages, snapshot.pins),
-        [controller, tree, lineages, snapshot.pins],
+        () => controller.setSnapshot(tree, nodesById, lineages, snapshot.pins),
+        [controller, tree, nodesById, lineages, snapshot.pins],
     )
+
+    const selectBug = useCallback((bug: SnapshotBug | undefined) => {
+        setSelectedBugId(bug?.id)
+        if (bug) controller.zoomToMarks(bug.marks.map((mark) => mark.nodeId))
+    }, [controller])
 
     return (
         <div className="bubble-map">
             <svg ref={svgRef}>
+                <defs>
+                    <StripePattern id={mapStripesId} ref={stripesRef} />
+                </defs>
                 <g ref={layerRef}>
                     <g className="bubbles">
-                        <Bubble node={tree} openIds={openIds} actions={controller} />
+                        <Bubble
+                            node={tree}
+                            openIds={openIds}
+                            marks={marks}
+                            hiddenMarks={hiddenMarks}
+                            actions={controller}
+                        />
                     </g>
                     <EdgeLayer edges={edges} actions={controller} />
                 </g>
             </svg>
             <Breadcrumb trail={trail.length ? trail : [tree]} onSelect={controller.zoomTo} />
+            <aside className="map-side">
+                <BugPanel
+                    bugs={snapshot.bugs}
+                    selectedBug={selectedBug}
+                    nodesById={nodesById}
+                    onSelectBug={selectBug}
+                    onSelectMark={controller.zoomTo}
+                />
+                <Legend />
+            </aside>
         </div>
     )
 }
@@ -89,18 +124,20 @@ class MapController implements BubbleActions, EdgeActions {
     private readonly bubbles = new Map<string, BubbleState>()
     private readonly elements = new Map<string, SVGGElement>()
     private readonly edgeElements = new Map<SVGPathElement, EdgeEnds>()
+    private readonly badges = new Set<SVGGElement>()
     private readonly simulations = new Map<string, GroupSimulation>()
     private readonly dirtyGroups = new Set<string>()
     private readonly zoomBehavior = zoom<SVGSVGElement, unknown>()
     private readonly showOpenIds: (openIds: ReadonlySet<string>) => void
     private readonly showFocus: (id: string) => void
     private tree: LayoutNode | undefined
-    private nodesById = new Map<string, LayoutNode>()
+    private nodesById: ReadonlyMap<string, LayoutNode> = new Map()
     private lineages: Lineages = new Map()
     private openIds: ReadonlySet<string> = new Set([ROOT_ID])
     private view: ZoomTransform = zoomIdentity
     private size: Size = { width: 0, height: 0 }
     private svg: SVGSVGElement | undefined
+    private stripes: SVGPatternElement | undefined
     private lastRootFit: ZoomTransform | undefined
     private hoveredId: string | undefined
     private isEdgeDrawQueued = false
@@ -110,15 +147,18 @@ class MapController implements BubbleActions, EdgeActions {
         this.showFocus = showFocus
     }
 
-    attach(svg: SVGSVGElement, layer: SVGGElement): () => void {
+    attach(svg: SVGSVGElement, layer: SVGGElement, stripes: SVGPatternElement): () => void {
         this.svg = svg
+        this.stripes = stripes
         this.size = measure(svg)
         this.zoomBehavior
             .on('zoom', (event: D3ZoomEvent<SVGSVGElement, unknown>) => {
+                const isScaling = event.transform.k !== this.view.k
                 // The browser reshapes every SVG label at each new scale, so labels hide until the zoom ends
-                if (event.transform.k !== this.view.k) svg.classList.add('zooming')
+                if (isScaling) svg.classList.add('zooming')
                 this.view = event.transform
                 layer.setAttribute('transform', event.transform.toString())
+                if (isScaling) this.counterScaleMarks()
                 if (this.refreshOpenIds()) this.syncSimulations()
             })
             .on('end', () => svg.classList.remove('zooming'))
@@ -140,13 +180,19 @@ class MapController implements BubbleActions, EdgeActions {
             for (const simulation of this.simulations.values()) simulation.stop()
             this.simulations.clear()
             this.svg = undefined
+            this.stripes = undefined
         }
     }
 
-    setSnapshot(tree: LayoutNode, lineages: Lineages, pins: Readonly<Record<string, Pin>>): void {
+    setSnapshot(
+        tree: LayoutNode,
+        nodesById: ReadonlyMap<string, LayoutNode>,
+        lineages: Lineages,
+        pins: Readonly<Record<string, Pin>>,
+    ): void {
         for (const id of syncBubbles(this.bubbles, tree, pins)) this.dirtyGroups.add(id)
         this.tree = tree
-        this.nodesById = indexNodes(tree)
+        this.nodesById = nodesById
         this.lineages = lineages
         for (const [id, element] of this.elements) this.place(element, this.bubbles.get(id))
         for (const [element, ends] of this.edgeElements) this.markRelated(element, ends)
@@ -175,13 +221,40 @@ class MapController implements BubbleActions, EdgeActions {
         }
     }
 
+    registerBadge = (element: SVGGElement): (() => void) => {
+        this.badges.add(element)
+        element.setAttribute('transform', counterScale(this.view.k))
+        return () => {
+            this.badges.delete(element)
+        }
+    }
+
     zoomTo = (id: string): void => {
         const node = this.nodesById.get(id)
-        if (!node || !this.svg) return
+        if (!node) return
         const transform = toZoomTransform(absolutePosition(this.bubbles, id), node.r, this.size)
         if (id === ROOT_ID) this.lastRootFit = transform
+        this.animateZoom(transform, id)
+    }
+
+    zoomToMarks = (ids: readonly string[]): void => {
+        const fit = fitMarks(ids, this.bubbles, this.lineages)
+        if (!fit) return
+        const { x, y, r } = fit.circle
+        this.animateZoom(toZoomTransform([x, y], r, this.size), fit.focusId)
+    }
+
+    private animateZoom(transform: ZoomTransform, focusId: string): void {
+        if (!this.svg) return
         select(this.svg).transition().duration(zoomDuration).call(this.zoomBehavior.transform, transform)
-        this.showFocus(id)
+        this.showFocus(focusId)
+    }
+
+    // Stripes and badges keep their size on screen at every zoom
+    private counterScaleMarks(): void {
+        const { k } = this.view
+        this.stripes?.setAttribute('patternTransform', stripeTransform(1 / k))
+        for (const badge of this.badges) badge.setAttribute('transform', counterScale(k))
     }
 
     unpin = (id: string): void => {
@@ -370,6 +443,8 @@ const toZoomTransform = (centre: Point, r: number, size: Size): ZoomTransform =>
     const { x, y, k } = fitTransform(centre, r, size)
     return zoomIdentity.translate(x, y).scale(k)
 }
+
+const counterScale = (k: number): string => `scale(${1 / k})`
 
 const isSameTransform = (a: ZoomTransform, b: ZoomTransform): boolean => {
     return Math.abs(a.k - b.k) <= a.k * 1e-9 && Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) < 0.5

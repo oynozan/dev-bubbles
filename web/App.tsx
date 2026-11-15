@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Snapshot, TreeNode } from '../shared/schema.ts'
 import { BubbleMap } from './map/BubbleMap.tsx'
 import { ErrorBanner } from './panels/ErrorBanner.tsx'
-import { Legend } from './panels/Legend.tsx'
 
 type StreamStatus = 'connecting' | 'live' | 'disconnected'
 
@@ -31,7 +30,6 @@ export const App = () => {
                 {hasNoComponents && (
                     <p className="map-hint">No components yet. Run /map in your coding agent to name these bubbles.</p>
                 )}
-                <Legend />
                 {status !== 'live' && <p className="status-line" role="status">{statusText[status]}</p>}
             </main>
         </div>

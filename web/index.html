@@ -30,7 +30,21 @@
             #edge-arrow-dimmed .edge-arrow { fill-opacity: 0.08; }
             #edge-arrow-related .edge-arrow { fill-opacity: 0.95; }
 
-            .legend, .map-hint, .status-line { background: rgba(26, 26, 26, 0.88); border: 1px solid #333333; border-radius: 6px; }
+            /* Status, the only color on the map */
+            circle.mark { stroke: #ef4444; stroke-opacity: 1; vector-effect: non-scaling-stroke; }
+            circle.mark.suspected { stroke-width: 1.5; }
+            circle.mark.confirmed { fill: #b91c1c; stroke-width: 3; }
+            .mark-stripes rect { fill: #ef4444; }
+            circle.mark-ring { fill: none; stroke: #ef4444; stroke-opacity: 0.7; stroke-width: 2; vector-effect: non-scaling-stroke; pointer-events: none; }
+            circle.mark-ring.confirmed { stroke-opacity: 1; stroke-width: 4; }
+            .mark-badge { font-size: 11px; font-weight: 600; pointer-events: none; }
+            .mark-badge rect { fill: #1a1a1a; stroke: #ef4444; stroke-width: 1.5; }
+            .mark-badge text { fill: #fca5a5; }
+            .mark-badge.confirmed rect { fill: #dc2626; stroke: #fca5a5; }
+            .mark-badge.confirmed text { fill: #ffffff; }
+            .mark.dimmed, .mark-ring.dimmed, .mark-badge.dimmed { opacity: 0.3; }
+
+            .legend, .bug-panel, .map-hint, .status-line { background: rgba(26, 26, 26, 0.88); border: 1px solid #333333; border-radius: 6px; }
 
             .breadcrumb { position: absolute; top: 8px; left: 8px; right: 8px; pointer-events: none; }
             .breadcrumb ol { display: flex; flex-wrap: wrap; align-items: center; margin: 0; padding: 0; list-style: none; }
@@ -38,8 +52,29 @@
             .breadcrumb button { padding: 2px 6px; border: 1px solid #333333; border-radius: 4px; background: rgba(26, 26, 26, 0.88); color: #a3a3a3; cursor: pointer; pointer-events: auto; }
             .breadcrumb button:hover { color: #f5f5f5; text-decoration: underline; }
             .breadcrumb button[aria-current] { color: #f5f5f5; font-weight: 600; }
+            .bubble-map:has(.bug-panel) .breadcrumb { right: 284px; }
 
-            .legend { position: absolute; right: 12px; bottom: 12px; margin: 0; padding: 6px 10px; list-style: none; color: #d4d4d4; }
+            .map-side { position: absolute; top: 8px; right: 12px; bottom: 12px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none; }
+            .map-side > * { pointer-events: auto; }
+
+            .bug-panel { width: 260px; max-width: calc(100vw - 48px); min-height: 0; overflow-y: auto; padding: 6px 0; color: #d4d4d4; font-size: 12px; }
+            .bug-panel h2 { margin: 0; padding: 0 10px 4px; color: #a3a3a3; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+            .bug-panel ul { margin: 0; padding: 0; list-style: none; }
+            .bug-panel button { display: block; width: 100%; padding: 6px 10px; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
+            .bug-panel button:hover { background: #262626; }
+            .bug-panel .bug[aria-pressed='true'] { background: #2e2e2e; box-shadow: inset 2px 0 #d4d4d4; }
+            .bug-title { display: block; color: #f5f5f5; font-weight: 500; overflow-wrap: anywhere; }
+            .bug-meta { display: block; margin-top: 2px; color: #a3a3a3; }
+            .bug-meta code { font-family: ui-monospace, monospace; }
+            .bug-panel .bug-marks { padding-bottom: 4px; }
+            .bug-marks button { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; column-gap: 6px; align-items: center; padding: 4px 10px 4px 18px; }
+            .mark-symbol { width: 12px; height: 12px; overflow: visible; }
+            .mark-name { color: #e5e5e5; overflow-wrap: anywhere; }
+            .mark-state { color: #fca5a5; }
+            .mark-reason { grid-column: 2 / -1; margin-top: 2px; color: #a3a3a3; }
+            .bug-marks-empty { margin: 0; padding: 4px 18px 8px; color: #737373; }
+
+            .legend { flex: none; margin: auto 0 0; padding: 6px 10px; list-style: none; color: #d4d4d4; }
             .legend li { display: flex; align-items: center; gap: 8px; line-height: 20px; }
             .legend-symbol { width: 24px; height: 12px; overflow: visible; }
             .legend-symbol .edge { stroke-opacity: 0.9; stroke-width: 1.5; marker-end: none; }

@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react'
+import { MarkSymbol } from '../map/patterns.tsx'
 
 type LegendEntry = {
     label: string
@@ -9,6 +10,8 @@ type LegendEntry = {
 const entries: LegendEntry[] = [
     { label: 'Import', symbol: <line className="edge import" x1={1} y1={6} x2={23} y2={6} /> },
     { label: 'HTTP call', symbol: <line className="edge http" x1={1} y1={6} x2={23} y2={6} /> },
+    { label: 'Suspected bug', symbol: <MarkSymbol state="suspected" cx={12} cy={6} r={5.5} /> },
+    { label: 'Confirmed bug', symbol: <MarkSymbol state="confirmed" cx={12} cy={6} r={5.5} /> },
 ]
 
 export const Legend = () => (
