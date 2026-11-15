@@ -69,6 +69,8 @@ web/
     Bubble.tsx              one node as <g>, drag
     layout.ts               pack + per-group force sims, containment, pins
     edges.ts                visible-level aggregation, path geometry
+    EdgeLayer.tsx           edge paths and arrow markers above the bubbles
+    marks.ts                bug marks per node, roll-up into closed groups, fit to marks
     patterns.tsx            stripe pattern defs
     CircleText.tsx          from the original
   panels/
