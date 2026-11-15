@@ -138,15 +138,15 @@ describe('edgeCurve', () => {
     const distanceTo = (circle: Circle, [x, y]: [number, number]) => Math.hypot(x - circle.x, y - circle.y)
 
     it('starts on the source border and ends on the target border', () => {
-        const { start, end } = edgeCurve(source, target)
+        const { start, end } = edgeCurve(source, target, 'import')
 
         expect(distanceTo(source, start)).toBeCloseTo(source.r)
         expect(distanceTo(target, end)).toBeCloseTo(target.r)
     })
 
     it('bends slightly to opposite sides for the two directions of a pair', () => {
-        const there = edgeCurve(source, target).control
-        const back = edgeCurve(target, source).control
+        const there = edgeCurve(source, target, 'import').control
+        const back = edgeCurve(target, source, 'import').control
 
         expect(Math.abs(there[1])).toBeGreaterThan(0)
         expect(Math.abs(there[1])).toBeLessThan((100 - 30) / 4)
@@ -156,10 +156,18 @@ describe('edgeCurve', () => {
     it('keeps the control point outside both circles', () => {
         const big: Circle = { x: 0, y: 0, r: 100 }
         const small: Circle = { x: 110, y: 0, r: 5 }
-        const { control } = edgeCurve(big, small)
+        const { control } = edgeCurve(big, small, 'import')
 
         expect(distanceTo(big, control)).toBeGreaterThan(big.r)
         expect(distanceTo(small, control)).toBeGreaterThan(small.r)
+    })
+
+    it('draws an import and an HTTP call between the same pair as two arcs', () => {
+        const importBend = edgeCurve(source, target, 'import').control[1]
+        const httpBend = edgeCurve(source, target, 'http').control[1]
+
+        expect(Math.sign(httpBend)).toBe(Math.sign(importBend))
+        expect(Math.abs(httpBend)).toBeGreaterThan(Math.abs(importBend) * 2)
     })
 })
 

@@ -362,8 +362,8 @@ class MapController implements BubbleActions, EdgeActions {
     private drawEdges(): void {
         const positions = new Map<string, Point>()
         const circleOf = (id: string) => absoluteCircle(this.bubbles, id, positions)
-        for (const [element, { from, to }] of this.edgeElements) {
-            const d = edgePath(circleOf(from), circleOf(to))
+        for (const [element, { from, to, kind }] of this.edgeElements) {
+            const d = edgePath(circleOf(from), circleOf(to), kind)
             // Rewriting a path repaints it even when unchanged, and edges outside the ticking groups stay put
             if (element.getAttribute('d') !== d) element.setAttribute('d', d)
         }

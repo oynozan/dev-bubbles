@@ -47,16 +47,16 @@ export const EdgeLayer = ({ edges, actions }: EdgeLayerProps) => (
 )
 
 const EdgePath = ({ edge, actions }: EdgePathProps) => {
-    const { from, to } = edge
+    const { from, to, kind } = edge
     // Keyed by the ends, so a regrouping that only changes counts keeps the path registered
     const register = useCallback(
-        (element: SVGPathElement | null) => (element ? actions.registerEdge({ from, to }, element) : undefined),
-        [actions, from, to],
+        (element: SVGPathElement | null) => (element ? actions.registerEdge({ from, to, kind }, element) : undefined),
+        [actions, from, to, kind],
     )
 
     return (
-        <path ref={register} className={`edge ${edge.kind}`} strokeWidth={edgeWidth(edge.count)}>
-            {edge.kind === 'http' && <title>{describeHttpEdge(edge)}</title>}
+        <path ref={register} className={`edge ${kind}`} strokeWidth={edgeWidth(edge.count)}>
+            {kind === 'http' && <title>{describeHttpEdge(edge)}</title>}
         </path>
     )
 }

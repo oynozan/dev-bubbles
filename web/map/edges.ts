@@ -12,7 +12,7 @@ export type VisibleEdge = {
     labels: string[]
 }
 
-export type EdgeEnds = Pick<VisibleEdge, 'from' | 'to'>
+export type EdgeEnds = Pick<VisibleEdge, 'from' | 'to' | 'kind'>
 
 export type EdgeCurve = {
     start: Point
@@ -20,7 +20,8 @@ export type EdgeCurve = {
     end: Point
 }
 
-const bend = 0.2
+// HTTP edges bend further, so an import and a call between the same pair draw two arcs
+const bends: Record<EdgeKind, number> = { import: 0.2, http: 0.45 }
 const maxEdgeWidth = 4
 const maxTooltipLabels = 10
 
@@ -61,19 +62,19 @@ const contains = (lineages: Lineages, outerId: string, innerId: string): boolean
 /* Drawing */
 
 // The bend sides with the direction, so a pair of bubbles that call each other draws two arcs
-export const edgeCurve = (source: Circle, target: Circle): EdgeCurve => {
+export const edgeCurve = (source: Circle, target: Circle, kind: EdgeKind): EdgeCurve => {
     const dx = target.x - source.x
     const dy = target.y - source.y
     const distance = Math.hypot(dx, dy) || 1
     const gap = Math.max(0, distance - source.r - target.r)
     const along = (source.r + gap / 2) / distance
-    const offset = (gap * bend) / distance
+    const offset = (gap * bends[kind]) / distance
     const control: Point = [source.x + dx * along - dy * offset, source.y + dy * along + dx * offset]
     return { start: towards(source, control), control, end: towards(target, control) }
 }
 
-export const edgePath = (source: Circle, target: Circle): string => {
-    const { start, control, end } = edgeCurve(source, target)
+export const edgePath = (source: Circle, target: Circle, kind: EdgeKind): string => {
+    const { start, control, end } = edgeCurve(source, target, kind)
     return `M${start[0]},${start[1]}Q${control[0]},${control[1]} ${end[0]},${end[1]}`
 }
 
