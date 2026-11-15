@@ -99,11 +99,15 @@ class MapController implements BubbleActions {
     attach(svg: SVGSVGElement, layer: SVGGElement): () => void {
         this.svg = svg
         this.size = measure(svg)
-        this.zoomBehavior.on('zoom', (event: D3ZoomEvent<SVGSVGElement, unknown>) => {
-            this.view = event.transform
-            layer.setAttribute('transform', event.transform.toString())
-            if (this.refreshOpenIds()) this.syncSimulations()
-        })
+        this.zoomBehavior
+            .on('zoom', (event: D3ZoomEvent<SVGSVGElement, unknown>) => {
+                // The browser reshapes every SVG label at each new scale, so labels hide until the zoom ends
+                if (event.transform.k !== this.view.k) svg.classList.add('zooming')
+                this.view = event.transform
+                layer.setAttribute('transform', event.transform.toString())
+                if (this.refreshOpenIds()) this.syncSimulations()
+            })
+            .on('end', () => svg.classList.remove('zooming'))
         select(svg).call(this.zoomBehavior).on('dblclick.zoom', null)
         const resizeObserver = new ResizeObserver(() => {
             this.size = measure(svg)
