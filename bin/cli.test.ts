@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
+import { once } from 'node:events'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -143,6 +144,8 @@ describe('dev-bubbles CLI', { timeout: 30_000 }, () => {
             await reader?.cancel()
         } finally {
             child.kill()
+            // Windows cannot delete the repo in afterAll while the server still watches it
+            if (child.exitCode === null && child.signalCode === null) await once(child, 'exit')
         }
     })
 })
