@@ -17,6 +17,8 @@
 
             .bubble { cursor: pointer; }
             .bubble > circle { stroke: #ffffff; stroke-opacity: 0.12; vector-effect: non-scaling-stroke; }
+            /* The bubble whose details are open, outlined without a status color */
+            circle.selection { fill: none; stroke: #ffffff; stroke-opacity: 0.6; stroke-width: 2; vector-effect: non-scaling-stroke; pointer-events: none; }
             .label { fill: #e5e5e5; stroke: #1a1a1a; stroke-width: 0.25em; stroke-linejoin: round; paint-order: stroke; font-weight: 500; pointer-events: none; }
             /* The map sets --zoom when a zoom ends, so an open group's name never shrinks below 11px on screen */
             .label.curved { font-size: max(var(--fitted-size), calc(11px / var(--zoom, 1))); }
@@ -83,6 +85,32 @@
             .legend li { display: flex; align-items: center; gap: 8px; line-height: 20px; }
             .legend-symbol { width: 24px; height: 12px; overflow: visible; }
             .legend-symbol .edge { stroke-opacity: 0.9; stroke-width: 1.5; marker-end: none; }
+
+            .details-window { position: fixed; top: 48px; left: 12px; z-index: 10; display: flex; flex-direction: column; width: 360px; max-width: calc(100vw - 24px); max-height: min(70vh, calc(100vh - 24px)); background: rgba(26, 26, 26, 0.96); border: 1px solid #404040; border-radius: 6px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); color: #d4d4d4; font-size: 12px; }
+            .details-window > header { display: flex; align-items: flex-start; gap: 8px; padding: 8px 6px 8px 12px; border-bottom: 1px solid #333333; cursor: move; user-select: none; touch-action: none; }
+            .details-heading { flex: 1; min-width: 0; }
+            .details-heading h2 { margin: 0; color: #f5f5f5; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+            .details-heading p { margin: 2px 0 0; color: #a3a3a3; }
+            .details-close { flex: none; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; background: none; color: #a3a3a3; font-size: 18px; line-height: 1; cursor: pointer; }
+            .details-close:hover, .details-close:focus-visible { background: #2e2e2e; color: #f5f5f5; }
+            .details-body { min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #525252 transparent; padding-bottom: 6px; }
+            .details-body h3 { margin: 0; padding: 10px 12px 4px; color: #a3a3a3; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+            .details-body ul { margin: 0; padding: 0; list-style: none; }
+            .details-body > .details-marks { padding: 8px 12px 0; }
+            .details-marks li { display: grid; grid-template-columns: 12px minmax(0, 1fr); column-gap: 6px; align-items: center; padding: 2px 0; }
+            .details-end { padding: 6px 12px; border-top: 1px solid #262626; }
+            .end-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+            .end-title { color: #f5f5f5; font-weight: 500; overflow-wrap: anywhere; }
+            .end-title.path, .connection-name, .connection-route { font-family: ui-monospace, monospace; font-size: 11px; }
+            .end-lines { flex: none; color: #a3a3a3; }
+            .connections { margin-top: 4px; }
+            .connections h4 { margin: 0 0 1px; color: #a3a3a3; font-size: 11px; font-weight: 500; }
+            .connection { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; width: 100%; padding: 2px 6px; border: 0; border-radius: 3px; background: none; color: #e5e5e5; text-align: left; cursor: pointer; }
+            .connection:hover { background: #262626; }
+            .connection.inside { opacity: 0.45; }
+            .connection-name { overflow-wrap: anywhere; }
+            .connection-holder { color: #a3a3a3; }
+            .connection-route { grid-column: 1 / -1; color: #a3a3a3; }
 
             .map-hint { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); max-width: calc(100% - 320px); margin: 0; padding: 6px 12px; color: #d4d4d4; text-align: center; }
             .status-line { position: absolute; left: 12px; bottom: 12px; margin: 0; padding: 4px 8px; color: #fcd34d; }

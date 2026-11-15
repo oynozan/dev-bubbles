@@ -28,7 +28,8 @@ export const BugPanel = ({ bugs, selectedBug, nodesById, files, onSelectBug, onS
     useEffect(() => {
         if (!selectedBug) return
         const deselectOnEscape = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') onSelectBug(undefined)
+            // An open details window takes Escape first
+            if (event.key === 'Escape' && !event.defaultPrevented) onSelectBug(undefined)
         }
         window.addEventListener('keydown', deselectOnEscape)
         return () => window.removeEventListener('keydown', deselectOnEscape)

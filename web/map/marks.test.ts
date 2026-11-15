@@ -3,7 +3,7 @@ import { fileId, ownFilesId, ROOT_ID } from '../../shared/schema.ts'
 import type { MarkState, SnapshotBug, TreeNode } from '../../shared/schema.ts'
 import { absoluteCircle, indexLineages, packTree, syncBubbles } from './layout.ts'
 import type { BubbleState, Circle } from './layout.ts'
-import { fitMarks, markNodes, rollUpHiddenMarks } from './marks.ts'
+import { fitMarks, indexMarks, markNodes, rollUpHiddenMarks } from './marks.ts'
 
 const leaf = (id: string, paths: string[]): TreeNode => {
     return { id, kind: 'component', label: id, files: paths.map((path) => ({ path, loc: 30 })) }
@@ -147,5 +147,15 @@ describe('fitMarks', () => {
     it('skips marks on nodes it does not know', () => {
         expect(fitMarks(['gone'], bubbles, lineages)).toBeUndefined()
         expect(fitMarks(['gone', server], bubbles, lineages)?.focusId).toBe(ownApi)
+    })
+})
+
+describe('indexMarks', () => {
+    it('gathers the marks of every bug by node', () => {
+        const index = indexMarks([bug('b1', [[billing, 'suspected'], [app, 'confirmed']]), bug('b2', [[billing, 'confirmed']])])
+
+        expect(index.get(billing)?.map((mark) => mark.state)).toEqual(['suspected', 'confirmed'])
+        expect(index.get(app)).toHaveLength(1)
+        expect(index.has(server)).toBe(false)
     })
 })

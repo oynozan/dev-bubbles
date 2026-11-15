@@ -20,10 +20,22 @@ export type EdgeCurve = {
     end: Point
 }
 
+export type ConnectionKind = 'imports' | 'importedBy' | 'calls' | 'calledBy'
+
+export type Connection = {
+    // The other end, a file or a component
+    id: string
+    label?: string
+}
+
+export type Connections = Record<ConnectionKind, Connection[]>
+
 // HTTP edges bend further, so an import and a call between the same pair draw two arcs
 const bends: Record<EdgeKind, number> = { import: 0.2, http: 0.45 }
 const maxEdgeWidth = 4
 const maxTooltipLabels = 10
+const outgoing: Record<EdgeKind, ConnectionKind> = { import: 'imports', http: 'calls' }
+const incoming: Record<EdgeKind, ConnectionKind> = { import: 'importedBy', http: 'calledBy' }
 
 /* Aggregation */
 
@@ -57,6 +69,23 @@ export const isEdgeOf = ({ from, to }: EdgeEnds, id: string, lineages: Lineages)
 
 const contains = (lineages: Lineages, outerId: string, innerId: string): boolean => {
     return lineages.get(innerId)?.includes(outerId) ?? false
+}
+
+/* Connections */
+
+// Every edge listed at both of its ends, for the details of a file or a component
+export const indexConnections = (edges: readonly Edge[]): Map<string, Connections> => {
+    const index = new Map<string, Connections>()
+    const add = (id: string, kind: ConnectionKind, connection: Connection): void => {
+        const connections = index.get(id) ?? { imports: [], importedBy: [], calls: [], calledBy: [] }
+        connections[kind].push(connection)
+        index.set(id, connections)
+    }
+    for (const { from, to, kind, label } of edges) {
+        add(from, outgoing[kind], { id: to, label })
+        add(to, incoming[kind], { id: from, label })
+    }
+    return index
 }
 
 /* Drawing */

@@ -9,7 +9,7 @@ import { mapStripesId, MarkCircle } from './patterns.tsx'
 export type BubbleActions = {
     register: (id: string, element: SVGGElement) => () => void
     registerBadge: (element: SVGGElement) => () => void
-    zoomTo: (id: string) => void
+    select: (id: string) => void
     unpin: (id: string) => void
 }
 
@@ -18,6 +18,7 @@ type BubbleProps = {
     openIds: ReadonlySet<string>
     marks: ReadonlyMap<string, NodeMark>
     hiddenMarks: ReadonlyMap<string, HiddenMarks>
+    selectedId: string | undefined
     // The zoom factor as of the last zoom end, which sizes the centered labels
     scale: number
     actions: BubbleActions
@@ -41,7 +42,7 @@ const badgeHeight = 16
 const badgeDigitWidth = 6.5
 const maxBadgeCount = 99
 
-const BubbleNode = ({ node, openIds, marks, hiddenMarks, scale, actions }: BubbleProps): ReactElement => {
+const BubbleNode = ({ node, openIds, marks, hiddenMarks, selectedId, scale, actions }: BubbleProps): ReactElement => {
     const { id, r } = node
     const isOpen = openIds.has(id)
     const mark = marks.get(id)
@@ -51,10 +52,10 @@ const BubbleNode = ({ node, openIds, marks, hiddenMarks, scale, actions }: Bubbl
         [actions, id],
     )
 
-    const zoomOnClick = (event: MouseEvent) => {
+    const selectOnClick = (event: MouseEvent) => {
         event.stopPropagation()
         // The second click of a double click belongs to unpinning
-        if (event.detail <= 1) actions.zoomTo(id)
+        if (event.detail <= 1) actions.select(id)
     }
     const unpinOnDoubleClick = (event: MouseEvent) => {
         event.stopPropagation()
@@ -62,7 +63,7 @@ const BubbleNode = ({ node, openIds, marks, hiddenMarks, scale, actions }: Bubbl
     }
 
     return (
-        <g ref={register} className="bubble" data-id={id} onClick={zoomOnClick} onDoubleClick={unpinOnDoubleClick}>
+        <g ref={register} className="bubble" data-id={id} onClick={selectOnClick} onDoubleClick={unpinOnDoubleClick}>
             <title>{tooltipOf(node)}</title>
             <circle r={r} fill={bubbleFill(node)} />
             {mark && <MarkCircle r={r} state={mark.state} isDimmed={mark.isDimmed} stripesId={mapStripesId} />}
@@ -73,10 +74,12 @@ const BubbleNode = ({ node, openIds, marks, hiddenMarks, scale, actions }: Bubbl
                     openIds={openIds}
                     marks={marks}
                     hiddenMarks={hiddenMarks}
+                    selectedId={selectedId}
                     scale={scale}
                     actions={actions}
                 />
             ))}
+            {id === selectedId && <circle r={r} className="selection" />}
             {hasVisibleLabel(node) && (isOpen ? <CurvedLabel node={node} /> : <CenteredLabel node={node} scale={scale} />)}
             {hidden && <HiddenMarksRing r={r} hidden={hidden} actions={actions} />}
         </g>

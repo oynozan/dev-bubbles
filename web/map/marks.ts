@@ -1,6 +1,6 @@
 import { packEnclose } from 'd3'
 import { ROOT_ID } from '../../shared/schema.ts'
-import type { MarkState, SnapshotBug } from '../../shared/schema.ts'
+import type { MarkState, SnapshotBug, SnapshotMark } from '../../shared/schema.ts'
 import type { Point } from '../lib/utils.ts'
 import { absoluteCircle, findVisibleId } from './layout.ts'
 import type { BubbleState, Circle, Lineages } from './layout.ts'
@@ -27,6 +27,12 @@ export const markNodes = (bugs: readonly SnapshotBug[], selectedBugId: string | 
         for (const { nodeId, state } of bug.marks) marks.set(nodeId, mergeMark(marks.get(nodeId), { state, isDimmed }))
     }
     return marks
+}
+
+export const indexMarks = (bugs: readonly SnapshotBug[]): Map<string, SnapshotMark[]> => {
+    const index = new Map<string, SnapshotMark[]>()
+    for (const mark of bugs.flatMap((bug) => bug.marks)) index.set(mark.nodeId, [...index.get(mark.nodeId) ?? [], mark])
+    return index
 }
 
 // The selected bug's marks win over dimmed ones, and among equals confirmed wins

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { dirId, fileId, ownFilesId, ROOT_ID, UNMAPPED_ID } from '../../shared/schema.ts'
 import type { Edge, TreeNode } from '../../shared/schema.ts'
-import { aggregateEdges, describeHttpEdge, edgeCurve, edgeWidth, isEdgeOf } from './edges.ts'
+import { aggregateEdges, describeHttpEdge, edgeCurve, edgeWidth, indexConnections, isEdgeOf } from './edges.ts'
 import type { VisibleEdge } from './edges.ts'
 import { indexLineages, packTree } from './layout.ts'
 import type { Circle } from './layout.ts'
@@ -190,5 +190,27 @@ describe('describeHttpEdge', () => {
 
         expect(describeHttpEdge(visibleEdge('web', 'api', routes.slice(0, 2)))).toBe('HTTP calls\nGET /api/r0\nGET /api/r1')
         expect(describeHttpEdge(visibleEdge('web', 'api', routes)).split('\n').slice(-2)).toEqual(['GET /api/r9', 'and 3 more'])
+    })
+})
+
+describe('indexConnections', () => {
+    it('lists every edge at both of its ends by kind and direction', () => {
+        const index = indexConnections([
+            importEdge('web/app.tsx', 'web/client.ts'),
+            importEdge('api/server.ts', 'web/client.ts'),
+            httpEdge(fileId('web/client.ts'), fileId('api/billing.ts'), 'GET /api/invoices'),
+            httpEdge('web', 'api.billing', 'calls BILLING_URL'),
+        ])
+
+        expect(index.get(fileId('web/client.ts'))).toEqual({
+            imports: [],
+            importedBy: [{ id: fileId('web/app.tsx') }, { id: fileId('api/server.ts') }],
+            calls: [{ id: fileId('api/billing.ts'), label: 'GET /api/invoices' }],
+            calledBy: [],
+        })
+        expect(index.get(fileId('web/app.tsx'))?.imports).toEqual([{ id: fileId('web/client.ts') }])
+        expect(index.get(fileId('api/billing.ts'))?.calledBy).toEqual([{ id: fileId('web/client.ts'), label: 'GET /api/invoices' }])
+        expect(index.get('api.billing')?.calledBy).toEqual([{ id: 'web', label: 'calls BILLING_URL' }])
+        expect(index.has(fileId('api/invoice.ts'))).toBe(false)
     })
 })
