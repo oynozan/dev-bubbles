@@ -1,7 +1,7 @@
 export type Point = [number, number]
 
 export const truncateString = (text: string, maxLength: number): string => {
-    return text.length > maxLength + 3 ? `${text.substring(0, maxLength)}...` : text
+    return text.length > maxLength ? `${text.slice(0, Math.max(0, maxLength - 1))}…` : text
 }
 
 export const keepBetween = (min: number, max: number, value: number): number => {
