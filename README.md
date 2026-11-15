@@ -16,11 +16,16 @@ Edges come from JavaScript and TypeScript code: static, dynamic and `require` im
 
 ## Install
 
-Requires Node.js 22.12 or newer and git. Dev Bubbles installs straight from GitHub, and npm builds it during the install.
+Requires Node.js 22.12 or newer and git. Install Dev Bubbles from a clone: `npm install` builds it and `npm link` puts `dev-bubbles` on your PATH.
 
 ```sh
-npm install -g github:oynozan/dev-bubbles
+git clone https://github.com/oynozan/dev-bubbles
+cd dev-bubbles
+npm install
+npm link
 ```
+
+To update, run `git pull` and `npm install` in the clone. A global install straight from GitHub (`npm install -g github:oynozan/dev-bubbles`) does not work, because npm leaves out the build tools when it prepares a git package for a global install.
 
 To run it without installing, use `npx github:oynozan/dev-bubbles` wherever this README says `dev-bubbles`.
 

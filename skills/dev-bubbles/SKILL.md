@@ -9,15 +9,23 @@ Dev Bubbles is a local web app that draws a git repo as live nested bubbles: com
 
 ## Install and run
 
-Needs Node.js 22.12 or newer and git. Dev Bubbles installs from GitHub and builds itself during the install.
+Needs Node.js 22.12 or newer and git. Install Dev Bubbles from a clone, outside the repo you map: `npm install` builds it and `npm link` puts `dev-bubbles` on the PATH. `npm install -g github:oynozan/dev-bubbles` does not work, because npm leaves out the build tools for a global git install.
 
 ```sh
-npm install -g github:oynozan/dev-bubbles
-dev-bubbles init .           # once per repo, from the repo root
+git clone https://github.com/oynozan/dev-bubbles
+cd dev-bubbles
+npm install
+npm link
+```
+
+Then, from the root of the repo to map:
+
+```sh
+dev-bubbles init .           # once per repo
 dev-bubbles                  # serve the map at http://127.0.0.1:4747
 ```
 
-Without the global install, put `npx github:oynozan/dev-bubbles` in place of `dev-bubbles` in every command.
+Without the install, put `npx github:oynozan/dev-bubbles` in place of `dev-bubbles` in every command.
 
 The server listens on 127.0.0.1 only and runs until stopped, so start it in the background or ask the user to run it in their own terminal. Edits to the JSON files never need a restart.
 
