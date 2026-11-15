@@ -27,6 +27,7 @@ import {
     findTrail,
     fitTransform,
     forceContain,
+    hasVisibleLabel,
     indexLineages,
     indexNodes,
     packTree,
@@ -67,7 +68,7 @@ export const BubbleMap = ({ snapshot }: BubbleMapProps) => {
     const selectedBug = snapshot.bugs.find((bug) => bug.id === selectedBugId)
     const marks = useMemo(() => markNodes(snapshot.bugs, selectedBug?.id), [snapshot.bugs, selectedBug?.id])
     const hiddenMarks = useMemo(() => rollUpHiddenMarks(marks, lineages, openIds), [marks, lineages, openIds])
-    const trail = findTrail(tree, focusId)
+    const trail = findTrail(tree, focusId).filter(hasVisibleLabel)
 
     useLayoutEffect(() => {
         const svg = svgRef.current

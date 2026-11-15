@@ -1,7 +1,7 @@
 import { memo, useCallback } from 'react'
 import type { CSSProperties, MouseEvent, ReactElement } from 'react'
 import { CircleText } from './CircleText.tsx'
-import { bubbleFill, fitLabel } from './layout.ts'
+import { bubbleFill, fitLabel, hasVisibleLabel } from './layout.ts'
 import type { LayoutNode } from './layout.ts'
 import type { HiddenMarks, NodeMark } from './marks.ts'
 import { mapStripesId, MarkCircle } from './patterns.tsx'
@@ -77,9 +77,6 @@ const BubbleNode = ({ node, openIds, marks, hiddenMarks, actions }: BubbleProps)
 }
 
 export const Bubble = memo(BubbleNode)
-
-// The coding agent names components, so file and folder names stay in the tooltip
-const hasVisibleLabel = ({ kind, depth }: LayoutNode): boolean => kind === 'component' || depth === 0
 
 const tooltipOf = ({ label, path, loc }: LayoutNode): string => {
     const lineCount = loc === undefined ? '' : `${loc} ${loc === 1 ? 'line' : 'lines'}`

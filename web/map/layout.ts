@@ -319,6 +319,11 @@ export const fitTransform = (centre: Point, r: number, { width, height }: Size):
 
 /* Labels and colors */
 
+// The coding agent names components, so file and folder names stay in the tooltip
+export const hasVisibleLabel = ({ kind, depth }: Pick<LayoutNode, 'kind' | 'depth'>): boolean => {
+    return kind === 'component' || depth === 0
+}
+
 // Long labels shrink down to half the font size before they are truncated
 export const fitLabel = (label: string, room: number, maxFontSize: number): FittedLabel => {
     const fontSize = keepBetween(maxFontSize / 2, maxFontSize, room / (label.length * glyphWidth))
