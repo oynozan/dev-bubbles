@@ -18,7 +18,7 @@ import type { BubbleActions } from './Bubble.tsx'
 import { EdgeLayer } from './EdgeLayer.tsx'
 import type { EdgeActions } from './EdgeLayer.tsx'
 import { aggregateEdges, edgePath, isEdgeOf } from './edges.ts'
-import type { Circle, VisibleEdge } from './edges.ts'
+import type { Circle, EdgeEnds } from './edges.ts'
 import {
     absolutePosition,
     findOpenIds,
@@ -88,7 +88,7 @@ export const BubbleMap = ({ snapshot }: BubbleMapProps) => {
 class MapController implements BubbleActions, EdgeActions {
     private readonly bubbles = new Map<string, BubbleState>()
     private readonly elements = new Map<string, SVGGElement>()
-    private readonly edgeElements = new Map<SVGPathElement, VisibleEdge>()
+    private readonly edgeElements = new Map<SVGPathElement, EdgeEnds>()
     private readonly simulations = new Map<string, GroupSimulation>()
     private readonly dirtyGroups = new Set<string>()
     private readonly zoomBehavior = zoom<SVGSVGElement, unknown>()
@@ -149,7 +149,7 @@ class MapController implements BubbleActions, EdgeActions {
         this.nodesById = indexNodes(tree)
         this.lineages = lineages
         for (const [id, element] of this.elements) this.place(element, this.bubbles.get(id))
-        for (const [element, edge] of this.edgeElements) this.markRelated(element, edge)
+        for (const [element, ends] of this.edgeElements) this.markRelated(element, ends)
         this.queueEdgeDraw()
         this.updateRootZoom()
         this.refreshOpenIds()
@@ -166,9 +166,9 @@ class MapController implements BubbleActions, EdgeActions {
         }
     }
 
-    registerEdge = (edge: VisibleEdge, element: SVGPathElement): (() => void) => {
-        this.edgeElements.set(element, edge)
-        this.markRelated(element, edge)
+    registerEdge = (ends: EdgeEnds, element: SVGPathElement): (() => void) => {
+        this.edgeElements.set(element, ends)
+        this.markRelated(element, ends)
         this.queueEdgeDraw()
         return () => {
             this.edgeElements.delete(element)
@@ -286,8 +286,10 @@ class MapController implements BubbleActions, EdgeActions {
             const [x, y] = absolutePosition(this.bubbles, id, positions)
             return { x, y, r: this.bubbles.get(id)?.r ?? 0 }
         }
-        for (const [element, edge] of this.edgeElements) {
-            element.setAttribute('d', edgePath(circleOf(edge.from), circleOf(edge.to)))
+        for (const [element, { from, to }] of this.edgeElements) {
+            const d = edgePath(circleOf(from), circleOf(to))
+            // Rewriting a path repaints it even when unchanged, and edges outside the ticking groups stay put
+            if (element.getAttribute('d') !== d) element.setAttribute('d', d)
         }
     }
 
@@ -304,12 +306,12 @@ class MapController implements BubbleActions, EdgeActions {
         if (id === this.hoveredId) return
         this.hoveredId = id
         this.svg?.classList.toggle('edge-focus', id !== undefined)
-        for (const [element, edge] of this.edgeElements) this.markRelated(element, edge)
+        for (const [element, ends] of this.edgeElements) this.markRelated(element, ends)
     }
 
-    private markRelated(element: SVGPathElement, edge: VisibleEdge): void {
+    private markRelated(element: SVGPathElement, ends: EdgeEnds): void {
         const id = this.hoveredId
-        element.classList.toggle('related', id !== undefined && isEdgeOf(edge, id, this.lineages))
+        element.classList.toggle('related', id !== undefined && isEdgeOf(ends, id, this.lineages))
     }
 
     /* Dragging */

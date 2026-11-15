@@ -12,6 +12,8 @@ export type VisibleEdge = {
     labels: string[]
 }
 
+export type EdgeEnds = Pick<VisibleEdge, 'from' | 'to'>
+
 export type Circle = {
     x: number
     y: number
@@ -25,7 +27,7 @@ export type EdgeCurve = {
 }
 
 const bend = 0.2
-const maxEdgeWidth = 6
+const maxEdgeWidth = 4
 const maxTooltipLabels = 10
 
 /* Aggregation */
@@ -54,7 +56,7 @@ export const aggregateEdges = (
 }
 
 // Hovering a bubble picks out the edges that end on it or inside it
-export const isEdgeOf = ({ from, to }: VisibleEdge, id: string, lineages: Lineages): boolean => {
+export const isEdgeOf = ({ from, to }: EdgeEnds, id: string, lineages: Lineages): boolean => {
     return contains(lineages, id, from) || contains(lineages, id, to)
 }
 
@@ -86,7 +88,7 @@ const towards = ({ x, y, r }: Circle, [pointX, pointY]: Point): Point => {
     return [x + ((pointX - x) / distance) * r, y + ((pointY - y) / distance) * r]
 }
 
-export const edgeWidth = (count: number): number => Math.min(maxEdgeWidth, 1 + Math.log2(count))
+export const edgeWidth = (count: number): number => Math.min(maxEdgeWidth, 1 + Math.log2(count) / 2)
 
 export const describeHttpEdge = ({ labels }: VisibleEdge): string => {
     const shown = labels.slice(0, maxTooltipLabels)

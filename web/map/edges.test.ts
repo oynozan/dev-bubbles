@@ -165,8 +165,8 @@ describe('edgeCurve', () => {
 describe('edgeWidth', () => {
     it('grows with the log of the count up to a cap', () => {
         expect(edgeWidth(1)).toBe(1)
-        expect(edgeWidth(4)).toBe(3)
-        expect(edgeWidth(1e6)).toBe(6)
+        expect(edgeWidth(4)).toBe(2)
+        expect(edgeWidth(1e6)).toBe(4)
     })
 })
 

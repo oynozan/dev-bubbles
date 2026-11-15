@@ -1,9 +1,9 @@
 import { useCallback } from 'react'
 import { describeHttpEdge, edgeWidth } from './edges.ts'
-import type { VisibleEdge } from './edges.ts'
+import type { EdgeEnds, VisibleEdge } from './edges.ts'
 
 export type EdgeActions = {
-    registerEdge: (edge: VisibleEdge, element: SVGPathElement) => () => void
+    registerEdge: (ends: EdgeEnds, element: SVGPathElement) => () => void
 }
 
 type EdgeLayerProps = {
@@ -16,37 +16,43 @@ type EdgePathProps = {
     actions: EdgeActions
 }
 
-const arrowId = 'edge-arrow'
+// The stylesheet picks one per edge state, since an arrow cannot inherit the opacity of its edge
+const arrowIds = ['edge-arrow', 'edge-arrow-related', 'edge-arrow-dimmed']
 
 export const EdgeLayer = ({ edges, actions }: EdgeLayerProps) => (
     <g className="edges">
         <defs>
             {/* Sized in stroke widths, which stay constant on screen under the non-scaling stroke */}
-            <marker
-                id={arrowId}
-                viewBox="0 0 10 10"
-                refX={10}
-                refY={5}
-                markerWidth={5}
-                markerHeight={5}
-                markerUnits="strokeWidth"
-                orient="auto"
-            >
-                <path className="edge-arrow" d="M0,0L10,5L0,10z" />
-            </marker>
+            {arrowIds.map((id) => (
+                <marker
+                    key={id}
+                    id={id}
+                    viewBox="0 0 10 10"
+                    refX={10}
+                    refY={5}
+                    markerWidth={5}
+                    markerHeight={5}
+                    markerUnits="strokeWidth"
+                    orient="auto"
+                >
+                    <path className="edge-arrow" d="M0,0L10,5L0,10z" />
+                </marker>
+            ))}
         </defs>
         {edges.map((edge) => <EdgePath key={edge.key} edge={edge} actions={actions} />)}
     </g>
 )
 
 const EdgePath = ({ edge, actions }: EdgePathProps) => {
+    const { from, to } = edge
+    // Keyed by the ends, so a regrouping that only changes counts keeps the path registered
     const register = useCallback(
-        (element: SVGPathElement | null) => (element ? actions.registerEdge(edge, element) : undefined),
-        [actions, edge],
+        (element: SVGPathElement | null) => (element ? actions.registerEdge({ from, to }, element) : undefined),
+        [actions, from, to],
     )
 
     return (
-        <path ref={register} className={`edge ${edge.kind}`} strokeWidth={edgeWidth(edge.count)} markerEnd={`url(#${arrowId})`}>
+        <path ref={register} className={`edge ${edge.kind}`} strokeWidth={edgeWidth(edge.count)}>
             {edge.kind === 'http' && <title>{describeHttpEdge(edge)}</title>}
         </path>
     )

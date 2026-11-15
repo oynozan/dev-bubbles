@@ -21,11 +21,14 @@
             .label { fill: #e5e5e5; stroke: #1a1a1a; stroke-linejoin: round; paint-order: stroke; font-weight: 500; pointer-events: none; }
             .zooming .label { display: none; }
 
-            .edge { fill: none; stroke: #d4d4d4; opacity: 0.5; vector-effect: non-scaling-stroke; pointer-events: none; }
+            /* Stroke and fill opacity, since opacity on each of thousands of paths composites them one by one */
+            .edge { fill: none; stroke: #d4d4d4; stroke-opacity: 0.4; marker-end: url(#edge-arrow); vector-effect: non-scaling-stroke; pointer-events: none; }
             .edge.http { stroke-dasharray: 5 4; pointer-events: stroke; }
-            .edge-arrow { fill: #d4d4d4; }
-            .edge-focus .edge { opacity: 0.08; }
-            .edge-focus .edge.related { opacity: 0.95; }
+            .edge-arrow { fill: #d4d4d4; fill-opacity: 0.4; }
+            .edge-focus .edge { stroke-opacity: 0.08; marker-end: url(#edge-arrow-dimmed); }
+            .edge-focus .edge.related { stroke-opacity: 0.95; marker-end: url(#edge-arrow-related); }
+            #edge-arrow-dimmed .edge-arrow { fill-opacity: 0.08; }
+            #edge-arrow-related .edge-arrow { fill-opacity: 0.95; }
 
             .legend, .map-hint, .status-line { background: rgba(26, 26, 26, 0.88); border: 1px solid #333333; border-radius: 6px; }
 
@@ -39,7 +42,7 @@
             .legend { position: absolute; right: 12px; bottom: 12px; margin: 0; padding: 6px 10px; list-style: none; color: #d4d4d4; }
             .legend li { display: flex; align-items: center; gap: 8px; line-height: 20px; }
             .legend-symbol { width: 24px; height: 12px; overflow: visible; }
-            .legend-symbol .edge { opacity: 0.9; stroke-width: 1.5; }
+            .legend-symbol .edge { stroke-opacity: 0.9; stroke-width: 1.5; marker-end: none; }
 
             .map-hint { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); max-width: calc(100% - 320px); margin: 0; padding: 6px 12px; color: #d4d4d4; text-align: center; }
             .status-line { position: absolute; left: 12px; bottom: 12px; margin: 0; padding: 4px 8px; color: #fcd34d; }
