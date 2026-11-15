@@ -1,3 +1,5 @@
 node_modules
 dist
 .claude/settings.local.json
+.dev-bubbles/bugs.json
+.dev-bubbles/layout.json
