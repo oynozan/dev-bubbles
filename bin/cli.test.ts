@@ -74,7 +74,7 @@ describe('dev-bubbles CLI', { timeout: 30_000 }, () => {
         expect(stdout).toContain('components.json: httpEdges[0].from: unknown component id web')
         expect(stdout).toContain('components.json: components[1]: component billing has no files')
         expect(stdout).toContain('components.json: src/lib/url.ts matches no component')
-        expect(stdout).toContain('bugs.json: bug b1: unknown component auth.x')
+        expect(stdout).toContain('bugs.json: bugs[0].marks[0].component: unknown component auth.x')
         expect(stdout.trim().split('\n').at(-1)).toMatch(/^\d+ errors$/)
     })
 

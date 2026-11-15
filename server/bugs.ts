@@ -1,26 +1,28 @@
 import { fileId } from '../shared/schema.ts'
-import type { Bug, BugsFile, Mark, SnapshotBug, SnapshotMark, TreeNode } from '../shared/schema.ts'
-import { flattenTree } from './components.ts'
+import type { Bug, BugsFile, Mark, SnapshotBug, SnapshotMark } from '../shared/schema.ts'
 
-export function resolveBugs(bugsFile: BugsFile | undefined, root: TreeNode): { bugs: SnapshotBug[], errors: string[] } {
-    const nodeIds = new Set(flattenTree(root).map((node) => node.id))
+export function resolveBugs(
+    bugsFile: BugsFile | undefined,
+    nodeIds: ReadonlySet<string>,
+): { bugs: SnapshotBug[], errors: string[] } {
     const errors: string[] = []
-    const bugs = (bugsFile?.bugs ?? [])
-        .filter((bug) => bug.status === 'open')
-        .map((bug) => resolveBug(bug, nodeIds, errors))
+    const bugs: SnapshotBug[] = []
+    for (const [index, bug] of (bugsFile?.bugs ?? []).entries()) {
+        if (bug.status === 'open') bugs.push(resolveBug(bug, `bugs[${index}]`, nodeIds, errors))
+    }
     return { bugs, errors }
 }
 
-function resolveBug(bug: Bug, nodeIds: Set<string>, errors: string[]): SnapshotBug {
+function resolveBug(bug: Bug, jsonPath: string, nodeIds: ReadonlySet<string>, errors: string[]): SnapshotBug {
     const marks: SnapshotMark[] = []
-    for (const mark of bug.marks) {
+    for (const [index, mark] of bug.marks.entries()) {
         const nodeId = 'component' in mark ? mark.component : fileId(mark.file)
         if (nodeIds.has(nodeId)) marks.push({ nodeId, state: mark.state, reason: mark.reason })
-        else errors.push(`bugs.json: bug ${bug.id}: unknown ${describeTarget(mark)}`)
+        else errors.push(`bugs.json: ${jsonPath}.marks[${index}].${describeUnknownTarget(mark)}`)
     }
     return { id: bug.id, title: bug.title, updatedAt: bug.updatedAt, marks }
 }
 
-function describeTarget(mark: Mark): string {
-    return 'component' in mark ? `component ${mark.component}` : `file ${mark.file}`
+function describeUnknownTarget(mark: Mark): string {
+    return 'component' in mark ? `component: unknown component ${mark.component}` : `file: unknown file ${mark.file}`
 }

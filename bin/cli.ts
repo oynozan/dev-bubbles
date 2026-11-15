@@ -234,12 +234,13 @@ function directoryOf(nodeId: string): string {
 async function validate(repoRoot: string, trackedOnly: boolean): Promise<number> {
     const { manifestResult, manifest, root } = await loadRepo(repoRoot, trackedOnly)
     const bugsResult = readJsonFile(path.join(repoRoot, configDir, 'bugs.json'), bugsFileSchema)
+    const nodeIds = new Set(flattenTree(root).map((node) => node.id))
     const errors = [
         ...(manifestResult.status === 'invalid' ? manifestResult.errors : []),
         ...(manifest ? checkManifest(manifest) : []),
-        ...(manifest ? findEmptyComponents(manifest, root) : []),
+        ...(manifest ? findEmptyComponents(manifest, nodeIds) : []),
         ...(bugsResult.status === 'invalid' ? bugsResult.errors : []),
-        ...(bugsResult.status === 'ok' ? resolveBugs(bugsResult.value, root).errors : []),
+        ...(bugsResult.status === 'ok' ? resolveBugs(bugsResult.value, nodeIds).errors : []),
         ...unmappedPaths(root).map((filePath) => `components.json: ${filePath} matches no component`),
     ]
     const verdict = errors.length === 0 ? 'OK' : countOf(errors.length, 'error')
@@ -247,8 +248,7 @@ async function validate(repoRoot: string, trackedOnly: boolean): Promise<number>
     return errors.length === 0 ? 0 : 1
 }
 
-function findEmptyComponents(manifest: Manifest, root: TreeNode): string[] {
-    const nodeIds = new Set(flattenTree(root).map((node) => node.id))
+function findEmptyComponents(manifest: Manifest, nodeIds: ReadonlySet<string>): string[] {
     return listComponents(manifest.components)
         .filter(({ def }) => !nodeIds.has(def.id))
         .map(({ def, jsonPath }) => `components.json: ${jsonPath}: component ${def.id} has no files`)

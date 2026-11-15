@@ -40,7 +40,7 @@ export function createSnapshotSource(repoRoot: string, options: { trackedOnly: b
         // A manual http edge can name a component that has no files and so no node
         const edges = edgeIndex.update(files, manifest).edges
             .filter((edge) => nodeIds.has(edge.from) && nodeIds.has(edge.to))
-        const { bugs, errors: bugErrors } = resolveBugs(bugsFile, root)
+        const { bugs, errors: bugErrors } = resolveBugs(bugsFile, nodeIds)
         errors.push(...bugErrors)
         return { root, edges, bugs, pins: layout?.pins ?? {}, errors, generatedAt: new Date().toISOString() }
     }

@@ -1,16 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import type { Bug, TreeNode } from '../shared/schema.ts'
+import type { Bug } from '../shared/schema.ts'
 import { resolveBugs } from './bugs.ts'
 
-const root: TreeNode = {
-    id: 'dir:', kind: 'dir', label: 'repo', path: '', children: [
-        {
-            id: 'auth', kind: 'component', label: 'Auth', children: [
-                { id: 'file:src/auth/session.ts', kind: 'file', label: 'session.ts', path: 'src/auth/session.ts', loc: 10 },
-            ],
-        },
-    ],
-}
+const nodeIds = new Set(['dir:', 'auth', 'file:src/auth/session.ts'])
 
 function bugsFile(...bugs: Bug[]) {
     return { version: 1 as const, bugs }
@@ -27,7 +19,7 @@ describe('resolveBugs', () => {
                 { component: 'auth', state: 'suspected', reason: 'owns the session' },
                 { file: 'src/auth/session.ts', state: 'confirmed' },
             ],
-        }), root)
+        }), nodeIds)
         expect(errors).toEqual([])
         expect(bugs).toEqual([{
             id: 'b1',
@@ -44,30 +36,33 @@ describe('resolveBugs', () => {
         const { bugs, errors } = resolveBugs(bugsFile(
             { id: 'b1', title: 'Old', status: 'fixed', marks: [{ component: 'gone', state: 'confirmed' }] },
             { id: 'b2', title: 'New', status: 'open', marks: [] },
-        ), root)
+        ), nodeIds)
         expect(bugs.map((bug) => bug.id)).toEqual(['b2'])
         expect(errors).toEqual([])
     })
 
-    it('skips and reports marks whose target is not in the tree', () => {
-        const { bugs, errors } = resolveBugs(bugsFile({
-            id: 'b1',
-            title: 'Broken',
-            status: 'open',
-            marks: [
-                { component: 'auth.x', state: 'suspected' },
-                { file: 'src/missing.ts', state: 'suspected' },
-                { component: 'auth', state: 'confirmed' },
-            ],
-        }), root)
+    it('skips and reports marks whose target is not in the tree with their JSON path', () => {
+        const { bugs, errors } = resolveBugs(bugsFile(
+            { id: 'b1', title: 'Old', status: 'fixed', marks: [] },
+            {
+                id: 'b2',
+                title: 'Broken',
+                status: 'open',
+                marks: [
+                    { component: 'auth.x', state: 'suspected' },
+                    { file: 'src/missing.ts', state: 'suspected' },
+                    { component: 'auth', state: 'confirmed' },
+                ],
+            },
+        ), nodeIds)
         expect(bugs[0].marks).toEqual([{ nodeId: 'auth', state: 'confirmed' }])
         expect(errors).toEqual([
-            'bugs.json: bug b1: unknown component auth.x',
-            'bugs.json: bug b1: unknown file src/missing.ts',
+            'bugs.json: bugs[1].marks[0].component: unknown component auth.x',
+            'bugs.json: bugs[1].marks[1].file: unknown file src/missing.ts',
         ])
     })
 
     it('returns no bugs without a bugs file', () => {
-        expect(resolveBugs(undefined, root)).toEqual({ bugs: [], errors: [] })
+        expect(resolveBugs(undefined, nodeIds)).toEqual({ bugs: [], errors: [] })
     })
 })
