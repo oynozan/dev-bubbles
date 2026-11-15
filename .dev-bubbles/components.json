@@ -1,0 +1,78 @@
+{
+    "version": 1,
+    "ignore": ["package-lock.json", ".claude/skills/**"],
+    "components": [
+        {
+            "id": "server",
+            "label": "Live Server",
+            "include": ["server/**"],
+            "exclude": ["server/analyzers/**", "server/edges*.ts"],
+            "children": [
+                { "id": "server.http", "label": "HTTP Server", "include": ["server/index*.ts", "server/package-root.ts"] },
+                { "id": "server.snapshot", "label": "Snapshot Builder", "include": ["server/snapshot*.ts"] },
+                { "id": "server.scanner", "label": "Repo Scanner", "include": ["server/inventory*.ts", "server/watcher*.ts"] },
+                { "id": "server.mapping", "label": "Component Mapping", "include": ["server/components*.ts"] },
+                { "id": "server.bugs", "label": "Bug Marks", "include": ["server/bugs*.ts"] },
+                { "id": "server.config", "label": "Config Files", "include": ["server/json-file*.ts"] }
+            ]
+        },
+        {
+            "id": "analysis",
+            "label": "Code Analysis",
+            "include": ["server/analyzers/**", "server/edges*.ts"],
+            "children": [
+                { "id": "analysis.parser", "label": "Source Parser", "include": ["server/analyzers/js-ts*.ts", "server/analyzers/types.ts"] },
+                { "id": "analysis.routes", "label": "HTTP Route Matcher", "include": ["server/analyzers/http*.ts"] },
+                { "id": "analysis.edges", "label": "Edge Index", "include": ["server/edges*.ts"] }
+            ]
+        },
+        {
+            "id": "web",
+            "label": "Bubble Map",
+            "include": ["web/**"],
+            "children": [
+                { "id": "web.shell", "label": "App Shell", "include": ["web/*"] },
+                { "id": "web.layout", "label": "Force Layout", "include": ["web/map/layout*.ts", "web/lib/**"] },
+                { "id": "web.canvas", "label": "Map Canvas", "include": ["web/map/**"], "exclude": ["web/map/layout*.ts"] },
+                { "id": "web.panels", "label": "Overlay Panels", "include": ["web/panels/**"] }
+            ]
+        },
+        { "id": "cli", "label": "Command Line", "include": ["bin/**"] },
+        { "id": "shared", "label": "Data Contracts", "include": ["shared/**"] },
+        { "id": "agent", "label": "Agent Skill", "include": ["skills/**", "templates/**"] },
+        {
+            "id": "fixture",
+            "label": "Fixture App",
+            "include": ["fixtures/**", "scripts/**"],
+            "children": [
+                { "id": "fixture.builder", "label": "Fixture Builder", "include": ["scripts/**"] },
+                { "id": "fixture.api", "label": "API Server", "include": ["fixtures/sample-app/src/api/**"] },
+                {
+                    "id": "fixture.auth",
+                    "label": "Auth",
+                    "include": ["fixtures/sample-app/src/auth/**"],
+                    "children": [
+                        { "id": "fixture.auth.google", "label": "Google Connector", "include": ["fixtures/sample-app/src/auth/oauth/google/**"] },
+                        { "id": "fixture.auth.apple", "label": "Apple Connector", "include": ["fixtures/sample-app/src/auth/oauth/apple/**"] }
+                    ]
+                },
+                { "id": "fixture.helpers", "label": "Helpers and Config", "include": ["fixtures/sample-app/src/lib/**", "fixtures/sample-app/src/config/**"] },
+                { "id": "fixture.pages", "label": "Web Pages", "include": ["fixtures/sample-app/web/**"] }
+            ]
+        },
+        {
+            "id": "project",
+            "label": "Project Setup",
+            "include": ["*", ".github/**", ".agents/**"],
+            "children": [
+                { "id": "project.docs", "label": "Docs", "include": ["README.md", "PLAN.md", "LICENSE"] },
+                { "id": "project.build", "label": "Build and CI", "include": ["package.json", "tsconfig*.json", "vite.config.ts", ".github/**", ".gitignore", ".gitattributes"] },
+                { "id": "project.style", "label": "Comment Style Skill", "include": [".agents/**", "skills-lock.json"] }
+            ]
+        }
+    ],
+    "httpEdges": [
+        { "from": "web.shell", "to": "server.http", "note": "GET /api/events streams snapshots" },
+        { "from": "web.canvas", "to": "server.http", "note": "POST /api/layout saves dragged pins" }
+    ]
+}
