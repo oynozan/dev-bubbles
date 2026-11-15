@@ -7,11 +7,13 @@ Map this repository into components for Dev Bubbles. Load the dev-bubbles skill 
 
 1. Run `dev-bubbles summary .` (use `npx github:oynozan/dev-bubbles summary .` if it is not installed).
 2. Open entry points and key files only as needed.
-3. Write `.dev-bubbles/components.json` with 4-space indentation. The map shows only your component labels, never file or folder names, so:
+3. Write `.dev-bubbles/components.json` with 4-space indentation. Every bubble on the map is one of your components with its label, leaf components hold the files, and clicking a bubble lists its files and their connections. So:
    - name what the code does for the product (Google Connector, Billing API), never a raw folder or file name
-   - split components until every area a user can zoom into has a name, each leaf one responsibility, at most 4 levels
+   - make each leaf small enough to mean something, a feature or module of roughly a handful to a few dozen files, at most 4 levels
+   - avoid a component with both own files and sub-components, since its own files show as an extra leaf with its name, and give those files a child of their own
    - dot-path ids under the parent, every source file covered, `ignore` for lockfiles and generated noise, `httpEdges` for the unmatched HTTP calls from the summary
    - if components already exist, keep every existing id and only add, regroup or relabel
 4. Run `dev-bubbles validate .` and fix what it reports until it prints OK.
+5. Run `dev-bubbles summary .` again and move the own files of every component it lists with both sub-components and own files into a child, then validate again.
 
 Extra instructions from the user, if any: $ARGUMENTS
