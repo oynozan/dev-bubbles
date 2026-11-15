@@ -101,7 +101,7 @@ function init(repoRoot: string): void {
         '',
         'Next steps:',
         `  1. Run dev-bubbles in ${repoRoot} to open the map`,
-        '  2. Run /map in Claude Code to group the files into components',
+        '  2. Run /map in Claude Code to group the files into named components',
     ].join('\n'))
 }
 
