@@ -46,48 +46,49 @@ Pass `.` as `<repo>` when you run from the repo root.
 ```json
 {
   "version": 1,
-  "ignore": ["**/package-lock.json", "**/*.lock", "**/*.generated.ts"],
+  "ignore": ["**/pnpm-lock.yaml", "**/*.snap", "**/*.generated.ts"],
   "components": [
-    { "id": "web", "label": "Web App", "include": ["web/**"] },
     {
-      "id": "api",
-      "label": "API Server",
-      "include": ["src/api/**", "src/config/**"],
+      "id": "storefront",
+      "label": "Storefront",
+      "include": ["apps/storefront/**"],
       "children": [
-        { "id": "api.routes", "label": "Routes", "include": ["src/api/routes/**"] }
+        { "id": "storefront.checkout", "label": "Checkout", "include": ["apps/storefront/src/checkout/**"] },
+        { "id": "storefront.catalog", "label": "Catalog", "include": ["apps/storefront/src/products/**", "apps/storefront/src/search/**"] }
       ]
     },
     {
-      "id": "auth",
-      "label": "Auth",
-      "include": ["src/auth/**"],
+      "id": "billing",
+      "label": "Billing Service",
+      "include": ["packages/billing/**"],
       "children": [
         {
-          "id": "auth.oauth",
-          "label": "OAuth",
-          "include": ["src/auth/oauth/**"],
+          "id": "billing.providers",
+          "label": "Payment Providers",
+          "include": ["packages/billing/src/providers/**"],
           "children": [
-            { "id": "auth.oauth.google", "label": "Google Connector", "include": ["src/auth/oauth/google/**"] },
-            { "id": "auth.oauth.apple", "label": "Apple Connector", "include": ["src/auth/oauth/apple/**"] }
+            { "id": "billing.providers.stripe", "label": "Stripe", "include": ["packages/billing/src/providers/stripe/**"] },
+            { "id": "billing.providers.paypal", "label": "PayPal", "include": ["packages/billing/src/providers/paypal/**"] }
           ]
         }
       ]
     },
-    { "id": "lib", "label": "lib", "include": ["src/lib/**"] },
-    { "id": "tooling", "label": "Tooling", "include": ["package.json", "tsconfig.json", ".gitignore"] }
+    { "id": "notifications", "label": "Notifications", "include": ["packages/notifications/**", "packages/email-templates/**"] },
+    { "id": "ui", "label": "ui", "include": ["packages/ui/**"] },
+    { "id": "tooling", "label": "Tooling", "include": ["package.json", "pnpm-workspace.yaml", "turbo.json"] }
   ],
   "httpEdges": [
-    { "from": "web", "to": "api.routes", "note": "calls API_URL from env" }
+    { "from": "storefront.checkout", "to": "billing", "note": "calls BILLING_API_URL from env" }
   ]
 }
 ```
 
 - `version` is always `1`.
-- `id`: letters, digits, `_` and `-`, joined by dots, unique in the file. A child's id is its parent's id plus one segment (`auth.oauth.google` under `auth.oauth`). `unmapped` is reserved.
+- `id`: letters, digits, `_` and `-`, joined by dots, unique in the file. A child's id is its parent's id plus one segment (`billing.providers.stripe` under `billing.providers`). `unmapped` is reserved.
 - Ids are stable. Never rename or reuse an existing id, because bug marks and pinned positions are keyed by it. Change the `label` instead.
-- `label`: short and human-readable, one to three words ("Google Connector"). Folder names that are already clear stay as they are: `lib` stays `lib`.
-- `include` (required) and `exclude` (optional): micromatch globs relative to the repo root, with forward slashes. `src/auth/**` is everything under `src/auth`. One component may span several folders, like `api` above. Use `exclude` to leave files to another component, for example `"exclude": ["web/src/api-client.ts"]`.
-- A file belongs to the deepest component whose globs match it. At equal depth the first in document order wins. So a parent can include its whole folder, its children take their subfolders, and loose files such as `src/auth/session.ts` stay in the parent.
+- `label`: short and human-readable, one to three words ("Payment Providers"). Folder names that are already clear stay as they are: `lib` stays `lib`.
+- `include` (required) and `exclude` (optional): micromatch globs relative to the repo root, with forward slashes. `packages/ui/**` is everything under `packages/ui`. One component may span several folders, like `notifications` above. Use `exclude` to leave files to another component, for example `"exclude": ["apps/storefront/src/api-client.ts"]`.
+- A file belongs to the deepest component whose globs match it. At equal depth the first in document order wins. So a parent can include its whole folder, its children take their subfolders, and loose files such as `packages/billing/src/invoice.ts` stay in the parent.
 - `children` nest components, at most 4 levels in total.
 - Files that match no component land in an `Unmapped` bubble, grouped by folder. Aim for none.
 - `ignore` (optional): globs for files to drop from the map entirely, such as lockfiles, generated code, committed build output and snapshots. Never ignore real source.
@@ -101,20 +102,20 @@ Pass `.` as `<repo>` when you run from the repo root.
   "bugs": [
     {
       "id": "b1",
-      "title": "Billing page shows no invoices",
+      "title": "Invoice emails go out without a total",
       "status": "fixed",
       "marks": [
-        { "file": "src/api/routes/billing.ts", "state": "confirmed", "reason": "compared the account id with the wrong session field" }
+        { "file": "packages/email-templates/src/invoice.tsx", "state": "confirmed", "reason": "read the total from a renamed field" }
       ],
       "updatedAt": "2026-11-09T16:20:00Z"
     },
     {
       "id": "b2",
-      "title": "Google login redirects to /undefined",
+      "title": "Checkout charges the card twice",
       "status": "open",
       "marks": [
-        { "component": "auth.oauth.google", "state": "confirmed", "reason": "callback URL built from missing env var" },
-        { "file": "src/lib/url.ts", "state": "suspected", "reason": "shared redirect helper" }
+        { "component": "billing.providers.stripe", "state": "confirmed", "reason": "retries the charge without an idempotency key" },
+        { "file": "apps/storefront/src/checkout/submit.ts", "state": "suspected", "reason": "may submit the form twice" }
       ],
       "updatedAt": "2026-11-11T10:00:00Z"
     }
@@ -133,7 +134,7 @@ Pass `.` as `<repo>` when you run from the repo root.
 ### layout.json
 
 ```json
-{ "version": 1, "pins": { "auth.oauth": [120, -40], "file:src/lib/url.ts": [10, 5] } }
+{ "version": 1, "pins": { "billing.providers": [120, -40], "file:packages/ui/src/Button.tsx": [10, 5] } }
 ```
 
 Pinned positions in parent-local coordinates, keyed by node id: a component id, `dir:<path>` or `file:<path>`. The UI owns this file, so read it if useful but never write it.
