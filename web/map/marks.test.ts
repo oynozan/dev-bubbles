@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { fileId, ROOT_ID } from '../../shared/schema.ts'
 import type { MarkState, SnapshotBug, TreeNode } from '../../shared/schema.ts'
-import type { Circle } from './edges.ts'
-import { absolutePosition, indexLineages, packTree, syncBubbles } from './layout.ts'
-import type { BubbleState } from './layout.ts'
+import { absoluteCircle, indexLineages, packTree, syncBubbles } from './layout.ts'
+import type { BubbleState, Circle } from './layout.ts'
 import { fitMarks, markNodes, rollUpHiddenMarks } from './marks.ts'
 
 const file = (path: string): TreeNode => {
@@ -40,11 +39,6 @@ const syncedBubbles = (): Map<string, BubbleState> => {
     const bubbles = new Map<string, BubbleState>()
     syncBubbles(bubbles, tree, {})
     return bubbles
-}
-
-const circleOf = (bubbles: Map<string, BubbleState>, id: string): Circle => {
-    const [x, y] = absolutePosition(bubbles, id)
-    return { x, y, r: bubbles.get(id)?.r ?? 0 }
 }
 
 const encloses = (outer: Circle, inner: Circle): boolean => {
@@ -121,8 +115,8 @@ describe('fitMarks', () => {
 
     it('fits the smallest circle around every mark and focuses their deepest shared ancestor', () => {
         const fit = fitMarks([app, billing], bubbles, lineages)
-        const from = circleOf(bubbles, app)
-        const to = circleOf(bubbles, billing)
+        const from = absoluteCircle(bubbles, app)
+        const to = absoluteCircle(bubbles, billing)
 
         expect(fit?.focusId).toBe(ROOT_ID)
         expect(fit && encloses(fit.circle, from) && encloses(fit.circle, to)).toBe(true)
@@ -132,7 +126,7 @@ describe('fitMarks', () => {
 
     it('fits a single mark like a click on its bubble', () => {
         expect(fitMarks(['api.billing'], bubbles, lineages)).toEqual({
-            circle: circleOf(bubbles, 'api.billing'),
+            circle: absoluteCircle(bubbles, 'api.billing'),
             focusId: 'api.billing',
         })
     })

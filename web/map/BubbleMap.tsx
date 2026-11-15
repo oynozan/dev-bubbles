@@ -20,8 +20,9 @@ import type { BubbleActions } from './Bubble.tsx'
 import { EdgeLayer } from './EdgeLayer.tsx'
 import type { EdgeActions } from './EdgeLayer.tsx'
 import { aggregateEdges, edgePath, isEdgeOf } from './edges.ts'
-import type { Circle, EdgeEnds } from './edges.ts'
+import type { EdgeEnds } from './edges.ts'
 import {
+    absoluteCircle,
     absolutePosition,
     findOpenIds,
     findTrail,
@@ -360,10 +361,7 @@ class MapController implements BubbleActions, EdgeActions {
 
     private drawEdges(): void {
         const positions = new Map<string, Point>()
-        const circleOf = (id: string): Circle => {
-            const [x, y] = absolutePosition(this.bubbles, id, positions)
-            return { x, y, r: this.bubbles.get(id)?.r ?? 0 }
-        }
+        const circleOf = (id: string) => absoluteCircle(this.bubbles, id, positions)
         for (const [element, { from, to }] of this.edgeElements) {
             const d = edgePath(circleOf(from), circleOf(to))
             // Rewriting a path repaints it even when unchanged, and edges outside the ticking groups stay put

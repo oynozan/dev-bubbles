@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { dirId, fileId, ROOT_ID, UNMAPPED_ID } from '../../shared/schema.ts'
 import type { Edge, TreeNode } from '../../shared/schema.ts'
 import { aggregateEdges, describeHttpEdge, edgeCurve, edgeWidth, isEdgeOf } from './edges.ts'
-import type { Circle, VisibleEdge } from './edges.ts'
+import type { VisibleEdge } from './edges.ts'
 import { indexLineages, packTree } from './layout.ts'
+import type { Circle } from './layout.ts'
 
 const file = (path: string): TreeNode => {
     return { id: fileId(path), kind: 'file', label: path.split('/').at(-1) ?? path, path, loc: 30 }

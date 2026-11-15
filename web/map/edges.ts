@@ -1,7 +1,7 @@
 import type { Edge, EdgeKind } from '../../shared/schema.ts'
 import type { Point } from '../lib/utils.ts'
 import { findVisibleId } from './layout.ts'
-import type { Lineages } from './layout.ts'
+import type { Circle, Lineages } from './layout.ts'
 
 export type VisibleEdge = {
     key: string
@@ -13,12 +13,6 @@ export type VisibleEdge = {
 }
 
 export type EdgeEnds = Pick<VisibleEdge, 'from' | 'to'>
-
-export type Circle = {
-    x: number
-    y: number
-    r: number
-}
 
 export type EdgeCurve = {
     start: Point

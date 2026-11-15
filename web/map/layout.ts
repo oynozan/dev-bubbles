@@ -52,6 +52,12 @@ export type View = Size & {
 
 export type Lineages = ReadonlyMap<string, readonly string[]>
 
+export type Circle = {
+    x: number
+    y: number
+    r: number
+}
+
 export type FittedLabel = {
     text: string
     fontSize: number
@@ -236,6 +242,15 @@ export const absolutePosition = (
     const position: Point = [parentX + bubble.x, parentY + bubble.y]
     cache.set(id, position)
     return position
+}
+
+export const absoluteCircle = (
+    bubbles: ReadonlyMap<string, BubbleState>,
+    id: string,
+    cache?: Map<string, Point>,
+): Circle => {
+    const [x, y] = absolutePosition(bubbles, id, cache)
+    return { x, y, r: bubbles.get(id)?.r ?? 0 }
 }
 
 /* Forces */
