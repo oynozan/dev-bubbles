@@ -24,6 +24,10 @@ function runCliIn(cwd: string, args: string[], input?: string) {
     return { status: result.status, stdout: result.stdout, stderr: result.stderr }
 }
 
+function hookCommand(event: string): string {
+    return `node "${cliFile}" hook ${event}`
+}
+
 const authAndBilling = {
     version: 1,
     components: [
@@ -63,24 +67,42 @@ describe('dev-bubbles CLI', { timeout: 30_000 }, () => {
         for (const fixture of repos) fs.rmSync(fixture, { recursive: true, force: true })
     })
 
-    it('init creates the config files, ignores the local ones and installs the agent files', () => {
+    it('init creates the config files, ignores the local ones and installs the agent files and hooks', () => {
         const freshRepo = makeRepo()
         const { status, stdout } = runCli('init', freshRepo)
         expect(status).toBe(0)
         expect(fs.readFileSync(configFile('components.json', freshRepo), 'utf8')).toBe('{\n    "version": 1,\n    "components": []\n}\n')
-        expect(JSON.parse(fs.readFileSync(configFile('bugs.json', freshRepo), 'utf8'))).toEqual({ version: 1, bugs: [] })
+        expect(readConfig('bugs.json', freshRepo)).toEqual({ version: 1, bugs: [] })
         const gitignore = fs.readFileSync(path.join(freshRepo, '.gitignore'), 'utf8').split('\n')
-        expect(gitignore).toEqual(expect.arrayContaining(['node_modules', '.dev/bugs.json', '.dev/layout.json']))
-        expect(fs.existsSync(path.join(freshRepo, '.claude', 'commands', 'map.md'))).toBe(true)
+        expect(gitignore).toEqual(expect.arrayContaining([
+            'node_modules', '.dev/dev-bubbles/', '.dev/bugs.json', '.dev/layout.json', '.dev/server.json', '.dev/server.log',
+        ]))
+        const bugCommand = fs.readFileSync(path.join(freshRepo, '.claude', 'commands', 'bug.md'), 'utf8')
+        expect(bugCommand).toContain(`${cliFile} bug open`)
+        expect(bugCommand).not.toContain('{{cli}}')
         expect(fs.existsSync(path.join(freshRepo, '.claude', 'skills', 'dev-bubbles', 'SKILL.md'))).toBe(true)
-        expect(stdout).toContain(path.join(packageRoot, 'templates', 'claude-snippet.md'))
+        const claudeMd = fs.readFileSync(path.join(freshRepo, 'CLAUDE.md'), 'utf8')
+        expect(claudeMd).toMatch(/^<!-- dev-bubbles:start -->\n## Dev Bubbles\n[^]*\n<!-- dev-bubbles:end -->\n$/)
+        expect(claudeMd).toContain(`${cliFile} bug mark <id> <component> suspected`)
+        expect(claudeMd).not.toContain('{{cli}}')
+        const settings = JSON.parse(fs.readFileSync(path.join(freshRepo, '.claude', 'settings.json'), 'utf8'))
+        expect(settings).toEqual({
+            hooks: {
+                SessionStart: [{ hooks: [{ type: 'command', command: hookCommand('session') }] }],
+                UserPromptSubmit: [{ hooks: [{ type: 'command', command: hookCommand('prompt') }] }],
+                Stop: [{ hooks: [{ type: 'command', command: hookCommand('stop') }] }],
+            },
+        })
+        expect(stdout).toContain(`node ${cliFile} up --open`)
+        expect(stdout).toContain('Ask the agent to map the repo (or /map)')
     })
 
-    it('init never overwrites existing files', () => {
+    it('init never overwrites the config files and adds its CLAUDE.md section once', () => {
         const freshRepo = makeRepo()
         const manifest = '{ "version": 1, "components": [], "ignore": [] }'
         fs.mkdirSync(path.join(freshRepo, '.dev'))
         fs.writeFileSync(configFile('components.json', freshRepo), manifest)
+        fs.writeFileSync(path.join(freshRepo, 'CLAUDE.md'), '# Project\n')
         runCli('init', freshRepo)
         const { status, stdout } = runCli('init', freshRepo)
         expect(status).toBe(0)
@@ -88,6 +110,57 @@ describe('dev-bubbles CLI', { timeout: 30_000 }, () => {
         expect(stdout).toContain('skipped')
         const gitignore = fs.readFileSync(path.join(freshRepo, '.gitignore'), 'utf8')
         expect(gitignore.match(/\.dev\/bugs\.json/g)).toHaveLength(1)
+        const claudeMd = fs.readFileSync(path.join(freshRepo, 'CLAUDE.md'), 'utf8')
+        expect(claudeMd.startsWith('# Project\n\n<!-- dev-bubbles:start -->\n')).toBe(true)
+        expect(claudeMd.match(/dev-bubbles:start/g)).toHaveLength(1)
+    })
+
+    it('init replaces its CLAUDE.md section and hooks in place and keeps everything else', () => {
+        const freshRepo = makeRepo()
+        const claudeMdPath = path.join(freshRepo, 'CLAUDE.md')
+        const settingsPath = path.join(freshRepo, '.claude', 'settings.json')
+        fs.writeFileSync(claudeMdPath, '# Notes\n\n<!-- dev-bubbles:start -->\nold section\n<!-- dev-bubbles:end -->\n\nKeep me\n')
+        fs.mkdirSync(path.join(freshRepo, '.claude'))
+        const userHook = { type: 'command', command: 'echo done' }
+        const staleHook = { type: 'command', command: 'node "/old/place/dist/bin/cli.js" hook stop' }
+        fs.writeFileSync(settingsPath, JSON.stringify({
+            model: 'opus',
+            permissions: { allow: ['Bash(npm test)'] },
+            hooks: {
+                Stop: [{ hooks: [userHook] }, { hooks: [staleHook] }],
+                PreToolUse: [{ matcher: 'Bash', hooks: [userHook] }],
+            },
+        }))
+        expect(runCli('init', freshRepo).status).toBe(0)
+        const settingsText = fs.readFileSync(settingsPath, 'utf8')
+        expect(runCli('init', freshRepo).stdout).toContain('settings.json is up to date')
+        expect(fs.readFileSync(settingsPath, 'utf8')).toBe(settingsText)
+        expect(JSON.parse(settingsText)).toEqual({
+            model: 'opus',
+            permissions: { allow: ['Bash(npm test)'] },
+            hooks: {
+                Stop: [{ hooks: [userHook] }, { hooks: [{ type: 'command', command: hookCommand('stop') }] }],
+                PreToolUse: [{ matcher: 'Bash', hooks: [userHook] }],
+                SessionStart: [{ hooks: [{ type: 'command', command: hookCommand('session') }] }],
+                UserPromptSubmit: [{ hooks: [{ type: 'command', command: hookCommand('prompt') }] }],
+            },
+        })
+        const claudeMd = fs.readFileSync(claudeMdPath, 'utf8')
+        expect(claudeMd.startsWith('# Notes\n\n<!-- dev-bubbles:start -->\n## Dev Bubbles\n')).toBe(true)
+        expect(claudeMd.endsWith('<!-- dev-bubbles:end -->\n\nKeep me\n')).toBe(true)
+        expect(claudeMd.match(/dev-bubbles:start/g)).toHaveLength(1)
+        expect(claudeMd).not.toContain('old section')
+    })
+
+    it('init leaves a settings.json that is not valid JSON untouched', () => {
+        const freshRepo = makeRepo()
+        const settingsPath = path.join(freshRepo, '.claude', 'settings.json')
+        fs.mkdirSync(path.join(freshRepo, '.claude'))
+        fs.writeFileSync(settingsPath, '{ "hooks": ')
+        const { status, stdout } = runCli('init', freshRepo)
+        expect(status).toBe(0)
+        expect(stdout).toContain('warning')
+        expect(fs.readFileSync(settingsPath, 'utf8')).toBe('{ "hooks": ')
     })
 
     it('validate passes on a fresh setup', () => {

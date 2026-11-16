@@ -8,14 +8,14 @@ import { createEdgeIndex } from '../server/edges.ts'
 import type { UnmatchedCall } from '../server/edges.ts'
 import { startServer } from '../server/index.ts'
 import { compareStrings, findRepoRoot } from '../server/inventory.ts'
-import { configDir, errorMessage, formatJson } from '../server/json-file.ts'
+import { configDir, errorMessage } from '../server/json-file.ts'
 import type { JsonFileResult } from '../server/json-file.ts'
-import { findPackageRoot } from '../server/package-root.ts'
 import { fileId, ownFilesId } from '../shared/schema.ts'
 import type { Edge, FileRef, Manifest, TreeNode } from '../shared/schema.ts'
 import { openInBrowser, recordServer, startBackgroundServer, stopBackgroundServer } from './background.ts'
 import { bugUsage, runBugCommand } from './bugs.ts'
 import { runHook } from './hooks.ts'
+import { init } from './init.ts'
 import { findErrors, loadRepo, unmappedPaths } from './repo.ts'
 
 const defaultPort = 4747
@@ -29,7 +29,7 @@ Commands:
     serve           Serve the live map in the foreground (default)
     up              Start the map server in the background unless it already runs, and print its URL
     down            Stop the background map server
-    init            Set up ${configDir}/ and the Claude Code commands in the repo
+    init            Set up ${configDir}/, the Claude Code commands and hooks and the CLAUDE.md section in the repo
     summary         Print a compact overview of the repo for a coding agent
     validate        Check components.json and bugs.json, exit 1 on any error
     bug             Record a bug on the map, see below
@@ -97,58 +97,6 @@ async function up(repoRoot: string, open: boolean): Promise<void> {
     const url = await startBackgroundServer(repoRoot)
     console.log(url)
     if (open) openInBrowser(url)
-}
-
-/* Init */
-
-function init(repoRoot: string): void {
-    const packageRoot = findPackageRoot(import.meta.dirname)
-    console.log(`Setting up Dev Bubbles in ${repoRoot}`)
-    createFileOnce(repoRoot, path.join(configDir, 'components.json'), formatJson({ version: 1, components: [] }))
-    createFileOnce(repoRoot, path.join(configDir, 'bugs.json'), formatJson({ version: 1, bugs: [] }))
-    addToGitignore(repoRoot, [`${configDir}/bugs.json`, `${configDir}/layout.json`])
-    copyTemplates(path.join(packageRoot, 'templates', 'commands'), repoRoot, path.join('.claude', 'commands'), '.md')
-    copyTemplates(path.join(packageRoot, 'skills', 'dev-bubbles'), repoRoot, path.join('.claude', 'skills', 'dev-bubbles'))
-    console.log([
-        '',
-        `Paste ${path.join(packageRoot, 'templates', 'claude-snippet.md')} into the repo's CLAUDE.md`,
-        '',
-        'Next steps:',
-        `  1. Run dev-bubbles in ${repoRoot} to open the map`,
-        '  2. Run /map in Claude Code to group the files into named components',
-    ].join('\n'))
-}
-
-function createFileOnce(repoRoot: string, relativePath: string, content: string | Buffer): void {
-    const filePath = path.join(repoRoot, relativePath)
-    if (fs.existsSync(filePath)) {
-        console.log(`  skipped ${relativePath}, it already exists`)
-        return
-    }
-    fs.mkdirSync(path.dirname(filePath), { recursive: true })
-    fs.writeFileSync(filePath, content)
-    console.log(`  created ${relativePath}`)
-}
-
-function addToGitignore(repoRoot: string, entries: string[]): void {
-    const gitignorePath = path.join(repoRoot, '.gitignore')
-    const current = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, 'utf8') : ''
-    const lines = new Set(current.split(/\r?\n/).map((line) => line.trim()))
-    const missing = entries.filter((entry) => !lines.has(entry))
-    if (missing.length === 0) return
-    const eol = current.includes('\r\n') ? '\r\n' : '\n'
-    const separator = current === '' || current.endsWith('\n') ? '' : eol
-    fs.appendFileSync(gitignorePath, separator + missing.map((entry) => entry + eol).join(''))
-    console.log(`  added ${missing.join(' and ')} to .gitignore`)
-}
-
-function copyTemplates(sourceDir: string, repoRoot: string, targetDir: string, extension = ''): void {
-    const sourceFiles = fs.readdirSync(sourceDir, { recursive: true, withFileTypes: true })
-        .filter((entry) => entry.isFile() && entry.name.endsWith(extension))
-        .map((entry) => path.relative(sourceDir, path.join(entry.parentPath, entry.name)))
-    for (const sourceFile of sourceFiles) {
-        createFileOnce(repoRoot, path.join(targetDir, sourceFile), fs.readFileSync(path.join(sourceDir, sourceFile)))
-    }
 }
 
 /* Summary */
