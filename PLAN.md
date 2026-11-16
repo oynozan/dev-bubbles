@@ -72,6 +72,7 @@ web/
     layout.ts               pack + per-group force sims, containment, pins
     edges.ts                visible-level aggregation, path geometry
     EdgeLayer.tsx           edge paths and arrow markers above the bubbles
+    LabelLayer.tsx          names and bug count badges above the edges, nested like the bubbles
     marks.ts                bug marks per node, roll-up into closed groups, fit to marks
     patterns.tsx            stripe pattern defs
     CircleText.tsx          from the original
@@ -240,7 +241,7 @@ type Snapshot = {
   - Files are not bubbles. Fallback directories draw no label, their path shows in the hover tooltip.
 - Details window: clicking a bubble opens a draggable window that lists its files with their imports, importers and HTTP calls, and the bug marks on them.
   - When the snapshot has no components yet, show a hint to run `/map` in the coding agent.
-  - Replace the old rule that hides labels longer than `r * 0.5` (`Tree.tsx` line ~267). Wrap onto two lines, then truncate with an ellipsis, and show the full label in a hover tooltip. Labels stay between 11 px and 32 px on screen.
+  - Replace the old rule that hides labels longer than `r * 0.5` (`Tree.tsx` line ~267). Show every name in full: wrap onto up to three lines, and spill past a circle too small for it. Names sit in their own layer above the bubbles and edges, so no neighbor paints over them. Only a bubble that is a dot on screen drops its name to the hover tooltip. Labels stay between 11 px and 32 px on screen.
 - Colors:
   - Dark theme only, page and map background `#1a1a1a`.
   - No file-type colors. Groups get a neutral dark fill shaded by depth, leaves a flat neutral a bit lighter than their group.
