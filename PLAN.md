@@ -51,7 +51,13 @@ A local dashboard that shows a git repo as live, nested bubbles (components → 
 ## Target layout
 
 ```
-bin/cli.ts                  serve | up | down | init | summary | validate | bug | hook
+bin/
+  cli.ts                    serve (default) | up | down | init | summary | validate | bug | hook
+  background.ts             up and down, .dev/server.json, opening the browser
+  init.ts                   .dev files, gitignore, templates, CLAUDE.md section, hooks in .claude/settings.json
+  bugs.ts                   bug open | mark | clear | fix | list
+  hooks.ts                  the session, prompt and stop hooks
+  repo.ts                   repo loading, the map checks shared by validate and the stop hook, the CLI path
 server/
   index.ts                  static app, GET /api/events (SSE), POST /api/layout
   inventory.ts              git ls-files, set diff, LOC per file
