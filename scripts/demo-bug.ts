@@ -1,11 +1,11 @@
 import { execFileSync } from 'node:child_process'
-import fs from 'node:fs'
 import path from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import micromatch from 'micromatch'
+import { nextBugId, readBugsFile, writeBugsFile } from '../bin/bugs.ts'
 import { buildTree, flattenTree } from '../server/components.ts'
-import { configDir, formatJson, readJsonFile } from '../server/json-file.ts'
-import { bugsFileSchema, manifestSchema } from '../shared/schema.ts'
+import { configDir, errorMessage, readJsonFile } from '../server/json-file.ts'
+import { manifestSchema } from '../shared/schema.ts'
 import type { Bug, ComponentDef, Mark } from '../shared/schema.ts'
 
 const stepMs = 4000
@@ -32,18 +32,17 @@ function leavesOf(defs: ComponentDef[]): ComponentDef[] {
 }
 
 function readBugs(): Bug[] {
-    const result = readJsonFile(bugsPath, bugsFileSchema)
-    if (result.status === 'invalid') fail([...result.errors, 'Fix bugs.json before running the demo'].join('\n'))
-    return result.status === 'ok' ? result.value.bugs : []
+    try {
+        return readBugsFile(bugsPath).bugs
+    } catch (error) {
+        fail(errorMessage(error))
+    }
 }
 
 // Rereads the file on every step so bugs edited meanwhile by someone else survive
 function saveDemoBug(bug?: Bug): void {
     const others = readBugs().filter(({ id }) => id !== demoId)
-    const bugsFile = bugsFileSchema.parse({ version: 1, bugs: bug ? [...others, bug] : others })
-    const tempPath = `${bugsPath}.${process.pid}.tmp`
-    fs.writeFileSync(tempPath, formatJson(bugsFile))
-    fs.renameSync(tempPath, bugsPath)
+    writeBugsFile(bugsPath, { version: 1, bugs: bug ? [...others, bug] : others })
 }
 
 const repoRoot = gitRoot(path.resolve(process.argv[2] ?? process.env.DEV_BUBBLES_REPO ?? process.cwd()))
@@ -69,8 +68,7 @@ if (suspects.length === 0) fail('No component in components.json matches a sourc
 const [culprit] = suspects
 const file = culprit.files[Math.floor(Math.random() * culprit.files.length)]
 
-const lastNumber = Math.max(0, ...readBugs().map(({ id }) => Number(/^b(\d+)$/.exec(id)?.[1] ?? 0)))
-const demoId = `b${lastNumber + 1}`
+const demoId = nextBugId(readBugs())
 const confirmed: Mark = { file, state: 'confirmed', reason: 'drops the setting before it is saved' }
 const steps: [string, Bug['status'], Mark[]][] = [
     [`suspected ${suspects.map(({ leaf }) => leaf.label).join(', ')}`, 'open', suspects.map(({ leaf }, index) => (

@@ -161,6 +161,92 @@ describe('dev-bubbles CLI', { timeout: 30_000 }, () => {
         expect(stderr).toContain('Not inside a git repository')
     })
 
+    describe('bug', () => {
+        let bugRepo: string
+
+        function bug(...args: string[]) {
+            return runCliIn(bugRepo, ['bug', ...args])
+        }
+
+        beforeAll(() => {
+            bugRepo = makeRepo()
+            runCli('init', bugRepo)
+            writeConfig('components.json', authAndBilling, bugRepo)
+        })
+
+        it('open adds an open bug and prints its id', () => {
+            const { status, stdout } = bug('open', 'Login', 'button does nothing')
+            expect(status).toBe(0)
+            expect(stdout).toBe('b1\n')
+            expect(readConfig('bugs.json', bugRepo).bugs).toEqual([
+                { id: 'b1', title: 'Login button does nothing', status: 'open', marks: [], updatedAt: expect.any(String) },
+            ])
+            expect(bug('open', 'Billing page is blank').stdout).toBe('b2\n')
+        })
+
+        it('mark adds component and file marks and replaces the mark on the same target', () => {
+            const before = readConfig('bugs.json', bugRepo).bugs[0].updatedAt
+            expect(bug('mark', 'b1', 'auth', 'suspected', 'handles', 'the login form').stdout).toBe('Marked auth as suspected on b1\n')
+            const absolutePath = path.join(bugRepo, 'src', 'auth', 'session.ts').replaceAll('/', '\\')
+            expect(bug('mark', 'b1', absolutePath, 'suspected').stdout).toBe('Marked src/auth/session.ts as suspected on b1\n')
+            expect(bug('mark', 'b1', 'src\\auth\\session.ts', 'confirmed', 'drops the cookie').status).toBe(0)
+            const [b1] = readConfig('bugs.json', bugRepo).bugs
+            expect(b1.marks).toEqual([
+                { component: 'auth', state: 'suspected', reason: 'handles the login form' },
+                { file: 'src/auth/session.ts', state: 'confirmed', reason: 'drops the cookie' },
+            ])
+            expect(new Date(b1.updatedAt).getTime()).toBeGreaterThan(new Date(before).getTime())
+        })
+
+        it('list prints the open bugs with their marks', () => {
+            const { status, stdout } = bug('list')
+            expect(status).toBe(0)
+            expect(stdout).toBe([
+                'b1 Login button does nothing',
+                '  suspected auth: handles the login form',
+                '  confirmed src/auth/session.ts: drops the cookie',
+                'b2 Billing page is blank',
+                '',
+            ].join('\n'))
+        })
+
+        it('clear removes the mark on a target', () => {
+            expect(bug('clear', 'b1', 'auth').stdout).toBe('Cleared the mark on auth from b1\n')
+            expect(readConfig('bugs.json', bugRepo).bugs[0].marks).toEqual([
+                { file: 'src/auth/session.ts', state: 'confirmed', reason: 'drops the cookie' },
+            ])
+            expect(bug('clear', 'b1', 'auth').status).toBe(1)
+        })
+
+        it('fix sets the bug to fixed and keeps its marks', () => {
+            expect(bug('fix', 'b1').status).toBe(0)
+            const [b1] = readConfig('bugs.json', bugRepo).bugs
+            expect(b1).toMatchObject({ status: 'fixed', marks: [{ file: 'src/auth/session.ts', state: 'confirmed' }] })
+            expect(bug('list').stdout).toBe('b2 Billing page is blank\n')
+        })
+
+        it('rejects an unknown target and names close component ids', () => {
+            const before = fs.readFileSync(configFile('bugs.json', bugRepo), 'utf8')
+            const { status, stderr } = bug('mark', 'b2', 'auht', 'suspected')
+            expect(status).toBe(1)
+            expect(stderr).toContain('Unknown target auht')
+            expect(stderr).toContain('Close component ids: auth, billing')
+            expect(bug('mark', 'b2', 'src/auth/missing.ts', 'suspected').status).toBe(1)
+            expect(bug('mark', 'b9', 'auth', 'suspected').stderr).toContain('No bug b9')
+            expect(bug('mark', 'b2', 'auth', 'maybe').status).toBe(1)
+            expect(fs.readFileSync(configFile('bugs.json', bugRepo), 'utf8')).toBe(before)
+        })
+
+        it('keeps an invalid bugs.json and reports its errors', () => {
+            const invalid = '{ "version": 1, "bugs": [{ "id": "b1" }] }'
+            fs.writeFileSync(configFile('bugs.json', bugRepo), invalid)
+            const { status, stderr } = bug('open', 'Another bug')
+            expect(status).toBe(1)
+            expect(stderr).toContain('bugs.json: bugs[0].title: ')
+            expect(fs.readFileSync(configFile('bugs.json', bugRepo), 'utf8')).toBe(invalid)
+        })
+    })
+
     it('serve prints its URL, records it in server.json and streams snapshots there', async () => {
         const freshRepo = makeRepo()
         const child = spawn(process.execPath, ['--import', tsxLoader, cliPath, 'serve', freshRepo, '--port', '0'], {

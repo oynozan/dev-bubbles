@@ -14,12 +14,13 @@ import { findPackageRoot } from '../server/package-root.ts'
 import { fileId, ownFilesId } from '../shared/schema.ts'
 import type { Edge, FileRef, Manifest, TreeNode } from '../shared/schema.ts'
 import { openInBrowser, recordServer, startBackgroundServer, stopBackgroundServer } from './background.ts'
+import { bugUsage, runBugCommand } from './bugs.ts'
 import { findErrors, loadRepo, unmappedPaths } from './repo.ts'
 
 const defaultPort = 4747
 const listLimit = 200
 const importPairLimit = 30
-const commands = new Set(['serve', 'up', 'down', 'init', 'summary', 'validate'])
+const commands = new Set(['serve', 'up', 'down', 'init', 'summary', 'validate', 'bug'])
 
 const usage = `Usage: dev-bubbles [command] [repo] [options]
 
@@ -30,6 +31,9 @@ Commands:
     init            Set up ${configDir}/ and the Claude Code commands in the repo
     summary         Print a compact overview of the repo for a coding agent
     validate        Check components.json and bugs.json, exit 1 on any error
+    bug             Record a bug on the map, see below
+
+${bugUsage}
 
 Options:
     --repo <path>   Repository when [repo] is not given (default: $DEV_BUBBLES_REPO or the current directory)
@@ -258,8 +262,8 @@ if (values.help) {
 const [command = 'serve', ...args] = positionals
 if (!commands.has(command)) fail(`Unknown command: ${command}\n\n${usage}`)
 
-const [repoArg, ...extraArgs] = args
-if (extraArgs.length > 0) fail(`Unexpected arguments: ${extraArgs.join(' ')}\n\n${usage}`)
+const repoArg = command === 'bug' ? undefined : args[0]
+if (command !== 'bug' && args.length > 1) fail(`Unexpected arguments: ${args.slice(1).join(' ')}\n\n${usage}`)
 
 const repo = path.resolve(repoArg ?? values.repo ?? process.env.DEV_BUBBLES_REPO ?? process.cwd())
 if (!fs.statSync(repo, { throwIfNoEntry: false })?.isDirectory()) {
@@ -276,6 +280,7 @@ if (command === 'serve') {
         if (command === 'init') init(repoRoot)
         else if (command === 'up') await up(repoRoot, values.open)
         else if (command === 'down') console.log(await stopBackgroundServer(repoRoot))
+        else if (command === 'bug') console.log(await runBugCommand(repoRoot, args))
         else if (command === 'summary') console.log(await summarize(repoRoot, trackedOnly))
         else process.exitCode = await validate(repoRoot, trackedOnly)
     } catch (error) {

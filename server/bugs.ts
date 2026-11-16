@@ -16,11 +16,15 @@ export function resolveBugs(
 function resolveBug(bug: Bug, jsonPath: string, nodeIds: ReadonlySet<string>, errors: string[]): SnapshotBug {
     const marks: SnapshotMark[] = []
     for (const [index, mark] of bug.marks.entries()) {
-        const nodeId = 'component' in mark ? mark.component : fileId(mark.file)
+        const nodeId = markNodeId(mark)
         if (nodeIds.has(nodeId)) marks.push({ nodeId, state: mark.state, reason: mark.reason })
         else errors.push(`bugs.json: ${jsonPath}.marks[${index}].${describeUnknownTarget(mark)}`)
     }
     return { id: bug.id, title: bug.title, updatedAt: bug.updatedAt, marks }
+}
+
+export function markNodeId(mark: Mark): string {
+    return 'component' in mark ? mark.component : fileId(mark.file)
 }
 
 function describeUnknownTarget(mark: Mark): string {
