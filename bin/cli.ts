@@ -15,12 +15,13 @@ import { fileId, ownFilesId } from '../shared/schema.ts'
 import type { Edge, FileRef, Manifest, TreeNode } from '../shared/schema.ts'
 import { openInBrowser, recordServer, startBackgroundServer, stopBackgroundServer } from './background.ts'
 import { bugUsage, runBugCommand } from './bugs.ts'
+import { runHook } from './hooks.ts'
 import { findErrors, loadRepo, unmappedPaths } from './repo.ts'
 
 const defaultPort = 4747
 const listLimit = 200
 const importPairLimit = 30
-const commands = new Set(['serve', 'up', 'down', 'init', 'summary', 'validate', 'bug'])
+const commands = new Set(['serve', 'up', 'down', 'init', 'summary', 'validate', 'bug', 'hook'])
 
 const usage = `Usage: dev-bubbles [command] [repo] [options]
 
@@ -32,6 +33,7 @@ Commands:
     summary         Print a compact overview of the repo for a coding agent
     validate        Check components.json and bugs.json, exit 1 on any error
     bug             Record a bug on the map, see below
+    hook <event>    Run the Claude Code hook for session, prompt or stop, with the hook input on stdin
 
 ${bugUsage}
 
@@ -262,28 +264,34 @@ if (values.help) {
 const [command = 'serve', ...args] = positionals
 if (!commands.has(command)) fail(`Unknown command: ${command}\n\n${usage}`)
 
-const repoArg = command === 'bug' ? undefined : args[0]
-if (command !== 'bug' && args.length > 1) fail(`Unexpected arguments: ${args.slice(1).join(' ')}\n\n${usage}`)
-
-const repo = path.resolve(repoArg ?? values.repo ?? process.env.DEV_BUBBLES_REPO ?? process.cwd())
-if (!fs.statSync(repo, { throwIfNoEntry: false })?.isDirectory()) {
-    fail(`Not a directory: ${repo}`)
-}
-
-const trackedOnly = values['tracked-only']
-
-if (command === 'serve') {
-    await serve(repo, values.port === undefined ? undefined : parsePort(values.port), trackedOnly)
+if (command === 'hook') {
+    // A failing hook must never get in the way of the user's Claude Code session
+    process.on('uncaughtException', () => process.exit(0))
+    await runHook(args[0], process.cwd())
 } else {
-    try {
-        const repoRoot = await findRepoRoot(repo)
-        if (command === 'init') init(repoRoot)
-        else if (command === 'up') await up(repoRoot, values.open)
-        else if (command === 'down') console.log(await stopBackgroundServer(repoRoot))
-        else if (command === 'bug') console.log(await runBugCommand(repoRoot, args))
-        else if (command === 'summary') console.log(await summarize(repoRoot, trackedOnly))
-        else process.exitCode = await validate(repoRoot, trackedOnly)
-    } catch (error) {
-        fail(errorMessage(error))
+    const repoArg = command === 'bug' ? undefined : args[0]
+    if (command !== 'bug' && args.length > 1) fail(`Unexpected arguments: ${args.slice(1).join(' ')}\n\n${usage}`)
+
+    const repo = path.resolve(repoArg ?? values.repo ?? process.env.DEV_BUBBLES_REPO ?? process.cwd())
+    if (!fs.statSync(repo, { throwIfNoEntry: false })?.isDirectory()) {
+        fail(`Not a directory: ${repo}`)
+    }
+
+    const trackedOnly = values['tracked-only']
+
+    if (command === 'serve') {
+        await serve(repo, values.port === undefined ? undefined : parsePort(values.port), trackedOnly)
+    } else {
+        try {
+            const repoRoot = await findRepoRoot(repo)
+            if (command === 'init') init(repoRoot)
+            else if (command === 'up') await up(repoRoot, values.open)
+            else if (command === 'down') console.log(await stopBackgroundServer(repoRoot))
+            else if (command === 'bug') console.log(await runBugCommand(repoRoot, args))
+            else if (command === 'summary') console.log(await summarize(repoRoot, trackedOnly))
+            else process.exitCode = await validate(repoRoot, trackedOnly)
+        } catch (error) {
+            fail(errorMessage(error))
+        }
     }
 }

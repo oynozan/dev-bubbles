@@ -11,6 +11,7 @@ import { makeFixture } from '../scripts/make-fixture.ts'
 
 const packageRoot = fileURLToPath(new URL('..', import.meta.url))
 const cliPath = path.join(packageRoot, 'bin', 'cli.ts')
+const cliFile = path.join(packageRoot, 'dist', 'bin', 'cli.js').replaceAll('\\', '/')
 // An absolute loader URL, since the hooks and bug commands run with the temp repo as their working directory
 const tsxLoader = pathToFileURL(createRequire(import.meta.url).resolve('tsx')).href
 
@@ -247,6 +248,72 @@ describe('dev-bubbles CLI', { timeout: 30_000 }, () => {
         })
     })
 
+    describe('hook', () => {
+        let hookRepo: string
+
+        function hook(event: string, input: unknown) {
+            return runCliIn(hookRepo, ['hook', event], typeof input === 'string' ? input : JSON.stringify(input))
+        }
+
+        beforeAll(() => {
+            hookRepo = makeRepo()
+            runCli('init', hookRepo)
+        })
+
+        it.each([
+            'this part doesn\'t work',
+            'Login is broken again',
+            'the save button won’t respond',
+            'getting a 500 when I pay',
+            'total shows NaN',
+        ])('prompt adds the bug steps to "%s"', (prompt) => {
+            const { status, stdout } = hook('prompt', { prompt })
+            expect(status).toBe(0)
+            expect(stdout).toContain(`${cliFile} bug open "<symptom in the user's words>"`)
+            expect(stdout).toContain('bug mark <id> <component> suspected')
+            expect(stdout).toContain('bug fix <id>')
+            expect(stdout).toContain('bug list')
+        })
+
+        it.each(['add a dark mode toggle', 'rename the billing page', 'explain how sessions work'])(
+            'prompt prints nothing for "%s"',
+            (prompt) => {
+                const { status, stdout } = hook('prompt', { prompt })
+                expect(status).toBe(0)
+                expect(stdout).toBe('')
+            },
+        )
+
+        it('stop blocks the turn while a file matches no component', () => {
+            writeConfig('components.json', { version: 1, components: [{ id: 'app', label: 'App', include: ['**'], exclude: ['web/**'] }] }, hookRepo)
+            const { status, stdout } = hook('stop', { stop_hook_active: false })
+            expect(status).toBe(0)
+            const output = JSON.parse(stdout)
+            expect(output.decision).toBe('block')
+            expect(output.reason).toContain('The Dev Bubbles map is out of date')
+            expect(output.reason).toContain('- components.json: web/src/App.tsx matches no component')
+            expect(output.reason).toContain('Update .dev/components.json')
+        })
+
+        it('stop is silent when it already blocked once in this turn', () => {
+            const { status, stdout } = hook('stop', { stop_hook_active: true })
+            expect(status).toBe(0)
+            expect(stdout).toBe('')
+        })
+
+        it('stop is silent when the map is up to date', () => {
+            writeConfig('components.json', { version: 1, components: [{ id: 'app', label: 'App', include: ['**'] }] }, hookRepo)
+            const { status, stdout } = hook('stop', { stop_hook_active: false })
+            expect(status).toBe(0)
+            expect(stdout).toBe('')
+        })
+
+        it('exits 0 and prints nothing on input it cannot read', () => {
+            expect(hook('stop', 'not json')).toMatchObject({ status: 0, stdout: '', stderr: '' })
+            expect(hook('unknown', {})).toMatchObject({ status: 0, stdout: '', stderr: '' })
+        })
+    })
+
     it('serve prints its URL, records it in server.json and streams snapshots there', async () => {
         const freshRepo = makeRepo()
         const child = spawn(process.execPath, ['--import', tsxLoader, cliPath, 'serve', freshRepo, '--port', '0'], {
@@ -288,6 +355,13 @@ describe('dev-bubbles CLI', { timeout: 30_000 }, () => {
             expect(isAlive(pid!)).toBe(true)
 
             expect(runCli('up', freshRepo).stdout).toBe(`${url}\n`)
+            expect(readConfig('server.json', freshRepo).pid).toBe(pid)
+
+            const session = runCliIn(freshRepo, ['hook', 'session'], '{}')
+            expect(session.stdout).toContain(`live bubble map of this repo at ${url}`)
+            expect(session.stdout).toContain(`${cliFile} bug open "<symptom>"`)
+            expect(session.stdout).toContain('This repo is not mapped yet')
+            expect(session.stdout.split(/\s+/).length).toBeLessThan(130)
             expect(readConfig('server.json', freshRepo).pid).toBe(pid)
 
             expect(runCli('down', freshRepo).stdout).toBe(`Stopped the Dev Bubbles server at ${url} (pid ${pid})\n`)
