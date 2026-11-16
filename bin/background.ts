@@ -34,7 +34,7 @@ export function recordServer(repoRoot: string, url: string): void {
     for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => process.exit())
 }
 
-// The URL check keeps a stale file from naming a pid that the system has given to another process
+// The URL check catches a stale file whose pid the system has since given to another process
 async function findRunningServer(repoRoot: string): Promise<ServerInfo | undefined> {
     const server = readServerFile(repoRoot)
     return server && isAlive(server.pid) && await answers(server.url) ? server : undefined
