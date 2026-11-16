@@ -87,13 +87,17 @@ export const openRadius = 60
 export const minLabelSize = 11
 // In screen pixels, the same ceiling the stylesheet gives curved labels, so a zoomed leaf keeps a name and not a poster
 export const maxLabelSize = 32
+// In screen pixels, below which a bubble reads as a dot and leaves its name to the tooltip
+export const minLabelRadius = 6
 
 const radiusPerSqrtLine = 2
 const newNodeSpread = 0.1
 const radiusTolerance = 1e-6
 const fitShare = 0.9
 const glyphWidth = 0.6
-const minLabelLength = 4
+const maxLabelLines = 3
+// Agent labels run one to three words, so only a runaway name is cut
+const maxLabelLength = 40
 const rootLightness = 14
 const depthLightnessStep = 3
 
@@ -391,29 +395,33 @@ export const fitLabel = (label: string, room: number, maxFontSize: number, minFo
     return { text: truncateString(label, maxLength), fontSize }
 }
 
-// A closed or leaf label keeps a readable size on screen and wraps before it truncates, so a bubble too small for a few characters drops it
+// A closed or leaf label takes the fewest lines that fit its circle, or else spills over it at a readable size, and only a dot drops it
 export const fitCenteredLabel = (label: string, r: number, k: number): FittedLines | undefined => {
-    const maxFontSize = keepBetween(minLabelSize / k, maxLabelSize / k, r * 0.3)
-    const minFontSize = keepBetween(minLabelSize / k, maxLabelSize / k, r * 0.15)
-    const oneLine = fitLabel(label, r * 1.8, maxFontSize, minFontSize)
-    if (oneLine.text === label) return { lines: [label], fontSize: oneLine.fontSize }
-    // Two lines sit off the centre, where the circle is narrower
-    const twoLines = wrapLabel(label, r * 1.6, maxFontSize, minFontSize)
-    if (twoLines) return twoLines
-    if (oneLine.text.length < Math.min(label.length, minLabelLength)) return undefined
-    return { lines: [oneLine.text], fontSize: oneLine.fontSize }
+    if (r * k < minLabelRadius) return undefined
+    const minFontSize = minLabelSize / k
+    const maxFontSize = keepBetween(minFontSize, maxLabelSize / k, r * 0.3)
+    const fittedMinFontSize = keepBetween(minFontSize, maxLabelSize / k, r * 0.15)
+    const words = truncateString(label, maxLabelLength).split(' ')
+    const wraps = Array.from({ length: maxLabelLines }, (_, index) => {
+        const lines = wrapWords(words, index + 1)
+        // Wrapped lines sit off the centre, where the circle is narrower
+        const room = lines.length > 1 ? r * 1.6 : r * 1.8
+        return { lines, fontSize: Math.min(maxFontSize, room / (longestLength(lines) * glyphWidth)) }
+    })
+    const fit = wraps.find(({ fontSize }) => fontSize >= fittedMinFontSize)
+        ?? wraps.reduce((best, wrap) => (wrap.fontSize > best.fontSize ? wrap : best))
+    return { lines: fit.lines, fontSize: Math.max(minFontSize, fit.fontSize) }
 }
 
-// Breaks at the space that keeps the longer line shortest
-const wrapLabel = (label: string, room: number, maxFontSize: number, minFontSize: number): FittedLines | undefined => {
-    let lines: string[] | undefined
-    for (let index = label.indexOf(' '); index !== -1; index = label.indexOf(' ', index + 1)) {
-        const split = [label.slice(0, index), label.slice(index + 1)]
-        if (!lines || longestLength(split) < longestLength(lines)) lines = split
+// Breaks into at most count lines at the spaces that keep the longest line shortest
+const wrapWords = (words: readonly string[], count: number): string[] => {
+    let lines = [words.join(' ')]
+    if (count === 1) return lines
+    for (let index = 1; index < words.length; index++) {
+        const split = [words.slice(0, index).join(' '), ...wrapWords(words.slice(index), count - 1)]
+        if (longestLength(split) < longestLength(lines)) lines = split
     }
-    if (!lines) return undefined
-    const fontSize = Math.min(maxFontSize, room / (longestLength(lines) * glyphWidth))
-    return fontSize >= minFontSize ? { lines, fontSize } : undefined
+    return lines
 }
 
 const longestLength = (lines: readonly string[]): number => Math.max(...lines.map((line) => line.length))

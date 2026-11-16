@@ -2,7 +2,8 @@
  * Interactive bubble map.
  * React renders the nested <g> tree under the repo, which draws no bubble itself, for open
  * groups only, with bug marks on the bubbles, the edges between the drawn bubbles in a layer
- * above it and the details window of the selected bubble. MapController owns everything that
+ * above it, the names and hidden mark rings in a layer above the edges that nests like the
+ * bubbles, and the details window of the selected bubble. MapController owns everything that
  * changes faster than React should, the node positions, one force simulation per open sibling
  * group, d3-zoom on the svg, d3-drag per bubble and the edge highlight of the hovered or
  * selected bubble, and writes transforms, edge paths and the counter-scaled mark stripes and
@@ -23,6 +24,8 @@ import { Bubble } from './Bubble.tsx'
 import type { BubbleActions } from './Bubble.tsx'
 import { EdgeLayer } from './EdgeLayer.tsx'
 import type { EdgeActions } from './EdgeLayer.tsx'
+import { LabelLayer } from './LabelLayer.tsx'
+import type { LabelActions } from './LabelLayer.tsx'
 import { aggregateEdges, edgePath, indexConnections, isEdgeOf } from './edges.ts'
 import type { EdgeEnds } from './edges.ts'
 import {
@@ -138,12 +141,18 @@ export const BubbleMap = ({ snapshot }: BubbleMapProps) => {
                                 marks={marks}
                                 hiddenMarks={hiddenMarks}
                                 selectedId={selectedNode?.id}
-                                scale={scale}
                                 actions={controller}
                             />
                         ))}
                     </g>
                     <EdgeLayer edges={edges} actions={controller} />
+                    <LabelLayer
+                        nodes={tree.children ?? []}
+                        openIds={openIds}
+                        hiddenMarks={hiddenMarks}
+                        scale={scale}
+                        actions={controller}
+                    />
                 </g>
             </svg>
             <Breadcrumb trail={trail.length ? trail : [tree]} onSelect={controller.zoomTo} />
@@ -165,9 +174,10 @@ export const BubbleMap = ({ snapshot }: BubbleMapProps) => {
     )
 }
 
-class MapController implements BubbleActions, EdgeActions {
+class MapController implements BubbleActions, EdgeActions, LabelActions {
     private readonly bubbles = new Map<string, BubbleState>()
     private readonly elements = new Map<string, SVGGElement>()
+    private readonly labelElements = new Map<string, SVGGElement>()
     private readonly edgeElements = new Map<SVGPathElement, EdgeEnds>()
     private readonly badges = new Set<SVGGElement>()
     private readonly simulations = new Map<string, GroupSimulation>()
@@ -251,7 +261,7 @@ class MapController implements BubbleActions, EdgeActions {
         this.tree = tree
         this.nodesById = nodesById
         this.lineages = lineages
-        for (const [id, element] of this.elements) this.place(element, this.bubbles.get(id))
+        for (const [id, element] of [...this.elements, ...this.labelElements]) this.place(element, this.bubbles.get(id))
         for (const [element, ends] of this.edgeElements) this.markRelated(element, ends)
         this.queueEdgeDraw()
         this.updateRootZoom()
@@ -272,6 +282,14 @@ class MapController implements BubbleActions, EdgeActions {
         return () => {
             if (this.elements.get(id) === element) this.elements.delete(id)
             select(element).on('.drag', null)
+        }
+    }
+
+    registerLabel = (id: string, element: SVGGElement): (() => void) => {
+        this.labelElements.set(id, element)
+        this.place(element, this.bubbles.get(id))
+        return () => {
+            if (this.labelElements.get(id) === element) this.labelElements.delete(id)
         }
     }
 
@@ -432,13 +450,13 @@ class MapController implements BubbleActions, EdgeActions {
 
     private placeAll(bubbles: BubbleState[]): void {
         for (const bubble of bubbles) {
-            const element = this.elements.get(bubble.id)
-            if (element) this.place(element, bubble)
+            this.place(this.elements.get(bubble.id), bubble)
+            this.place(this.labelElements.get(bubble.id), bubble)
         }
     }
 
-    private place(element: SVGGElement, bubble: BubbleState | undefined): void {
-        if (bubble) element.setAttribute('transform', `translate(${bubble.x},${bubble.y})`)
+    private place(element: SVGGElement | undefined, bubble: BubbleState | undefined): void {
+        if (element && bubble) element.setAttribute('transform', `translate(${bubble.x},${bubble.y})`)
     }
 
     /* Edges */

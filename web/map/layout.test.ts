@@ -12,6 +12,7 @@ import {
     indexLineages,
     indexNodes,
     maxLabelSize,
+    minLabelRadius,
     minLabelSize,
     openRadius,
     packTree,
@@ -365,23 +366,36 @@ describe('fitLabel', () => {
 })
 
 describe('fitCenteredLabel', () => {
-    it('keeps the label at least minLabelSize pixels on screen and truncates it to fit', () => {
+    it('keeps the whole label at least minLabelSize pixels on screen, spilling over a circle too small for it', () => {
         expect(fitCenteredLabel('Server', 100, 1)).toEqual({ lines: ['Server'], fontSize: 30 })
-        expect(fitCenteredLabel('Server', 100, 0.2)).toEqual({ lines: ['Serv…'], fontSize: minLabelSize / 0.2 })
+        expect(fitCenteredLabel('Server', 100, 0.2)).toEqual({ lines: ['Server'], fontSize: minLabelSize / 0.2 })
+        expect(fitCenteredLabel('Commit History', 25, 1)).toEqual({ lines: ['Commit', 'History'], fontSize: minLabelSize })
     })
 
     it('keeps the label at most maxLabelSize pixels on screen', () => {
         expect(fitCenteredLabel('Server', 100, 4)).toEqual({ lines: ['Server'], fontSize: maxLabelSize / 4 })
     })
 
-    it('wraps a label onto two lines at the most even space before it truncates', () => {
+    it('wraps a label onto at most three lines at the most even spaces', () => {
         expect(fitCenteredLabel('Commit History', 50, 1)).toEqual({ lines: ['Commit', 'History'], fontSize: 15 })
         expect(fitCenteredLabel('Helpers and Config', 50, 1)).toEqual({ lines: ['Helpers', 'and Config'], fontSize: expect.closeTo(80 / 6) })
-        expect(fitCenteredLabel('Commit History', 25, 1)).toEqual({ lines: ['Commi…'], fontSize: minLabelSize })
+        expect(fitCenteredLabel('HTTP Route Matcher', 35, 1)).toEqual({ lines: ['HTTP', 'Route', 'Matcher'], fontSize: minLabelSize })
+        expect(fitCenteredLabel('A Very Long Component Name', 35, 1)?.lines).toEqual(['A Very Long', 'Component', 'Name'])
     })
 
-    it('drops the label when the bubble cannot hold a few characters on screen', () => {
-        expect(fitCenteredLabel('Server', 100, 0.1)).toBeUndefined()
-        expect(fitCenteredLabel('UI', 100, 0.1)).toEqual({ lines: ['UI'], fontSize: minLabelSize / 0.1 })
+    it('shrinks a label that cannot wrap down to minLabelSize before it spills over its circle', () => {
+        expect(fitCenteredLabel('Internationalizations', 100, 1)).toEqual({
+            lines: ['Internationalizations'],
+            fontSize: expect.closeTo(180 / (21 * 0.6)),
+        })
+    })
+
+    it('truncates only a runaway label', () => {
+        expect(fitCenteredLabel('x'.repeat(60), 100, 1)?.lines).toEqual([`${'x'.repeat(39)}…`])
+    })
+
+    it('drops the label only when the bubble is a dot on screen', () => {
+        expect(fitCenteredLabel('Server', minLabelRadius - 1, 1)).toBeUndefined()
+        expect(fitCenteredLabel('Server', minLabelRadius, 1)).toEqual({ lines: ['Server'], fontSize: minLabelSize })
     })
 })

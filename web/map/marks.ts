@@ -42,6 +42,8 @@ const mergeMark = (previous: NodeMark | undefined, mark: NodeMark): NodeMark => 
     return { state: previous.state === 'confirmed' ? 'confirmed' : mark.state, isDimmed: mark.isDimmed }
 }
 
+export const markStatus = ({ state, isDimmed }: NodeMark): string => (isDimmed ? `${state} dimmed` : state)
+
 // A mark inside a closed group shows on the drawn group, which counts the selected bug's marks ahead of dimmed ones
 export const rollUpHiddenMarks = (
     marks: ReadonlyMap<string, NodeMark>,
