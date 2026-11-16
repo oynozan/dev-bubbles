@@ -1,53 +1,62 @@
 ---
 name: dev-bubbles
-description: Map a codebase into named components and track bug investigations on the Dev Bubbles live bubble map. Load when mapping or grouping a codebase into components, naming components, editing .dev-bubbles/components.json or .dev-bubbles/bugs.json, or whenever the user reports a bug in a repo that has a .dev-bubbles/ folder.
+description: Set up and keep current Dev Bubbles, a live bubble map of a git repo with agent-named components and live bug marks. Load on any request to set up, install or open it ("set up dev bubbles", "install dev bubbles", "show the code map"), when mapping code into components or adding, moving or deleting features, and on ANY report of something broken or wrong in a repo that has .dev/components.json, however casual ("this doesn't work", "X is broken", "why does Y fail"), before investigating.
 ---
 
 # Dev Bubbles
 
-Dev Bubbles is a local web app that draws a git repo as live nested bubbles. Every bubble is a component you define in `.dev-bubbles/components.json` and shows the label you gave it, never a file or folder name. Components hold sub-components, leaf components hold files, and bubbles are sized by lines of code. Files are not bubbles: clicking a bubble opens a details window that lists its files with their imports, importers and HTTP calls. Solid lines are imports, dashed lines are HTTP calls. You also mark the code involved in a bug in `.dev-bubbles/bugs.json`. The server watches both files, so every save shows up in the user's browser within a second. Dev Bubbles never calls an LLM and needs no API key.
+Dev Bubbles is a local web app that draws a git repo as live nested bubbles. Every bubble is a component you define in `.dev/components.json` and shows the label you gave it, never a file or folder name. Components hold sub-components, leaf components hold files, and bubbles are sized by lines of code. Files are not bubbles: clicking a bubble opens a details window that lists its files with their imports, importers and HTTP calls. Solid lines are imports, dashed lines are HTTP calls. You also mark the code involved in a bug with the `bug` commands, which write `.dev/bugs.json`. The server watches the files, the git index and HEAD, and both JSON files, so every file change, commit, component edit and bug mark shows up in the user's browser within half a second. Dev Bubbles never calls an LLM and needs no API key.
 
-## Install and run
+In this skill, `dev-bubbles` means `node .dev/dev-bubbles/dist/bin/cli.js` run from the project root, or the `dev-bubbles` command if it is on the PATH.
 
-Needs Node.js 22.12 or newer and git. Install Dev Bubbles from a clone, outside the repo you map: `npm install` builds it and `npm link` puts `dev-bubbles` on the PATH. `npm install -g github:oynozan/dev-bubbles` does not work, because npm leaves out the build tools for a global git install.
+## Setup procedure
 
-```sh
-git clone https://github.com/oynozan/dev-bubbles
-cd dev-bubbles
-npm install
-npm link
-```
+Run this when `.dev/dev-bubbles/` is missing or the user asks to set up Dev Bubbles. It needs Node.js 22.12 or newer and git, and runs from the root of the project's git repo.
 
-Then, from the root of the repo to map:
-
-```sh
-dev-bubbles init .           # once per repo
-dev-bubbles                  # serve the map at http://127.0.0.1:4747
-```
-
-Without the install, put `npx github:oynozan/dev-bubbles` in place of `dev-bubbles` in every command.
-
-The server listens on 127.0.0.1 only and runs until stopped, so start it in the background or ask the user to run it in their own terminal. Edits to the JSON files never need a restart.
+1. `git clone https://github.com/oynozan/dev-bubbles.git .dev/dev-bubbles`. If the clone already exists, run `git -C .dev/dev-bubbles pull` instead.
+2. `npm install --prefix .dev/dev-bubbles`. This also builds `dist/` and takes about a minute.
+3. `node .dev/dev-bubbles/dist/bin/cli.js init .`
+4. `node .dev/dev-bubbles/dist/bin/cli.js up --open`
+5. Run the map procedure.
+6. Tell the user the map URL, and that from now on bug reports, file changes, commits and design changes show up there live, with the server starting by itself in each Claude Code session.
 
 ## CLI
 
-Pass `.` as `<repo>` when you run from the repo root.
+`[repo]` defaults to the current directory, so pass nothing or `.` from the project root.
 
-- `dev-bubbles [serve] [--repo <path>] [--port <n>]`: serve the live map. Defaults are the current directory and port 4747.
-- `dev-bubbles init <repo>`: create `.dev-bubbles/` with an empty `components.json` and `bugs.json`, add `bugs.json` and `layout.json` to `.gitignore`, copy the `/map` and `/bug` commands to `.claude/commands/` and this skill to `.claude/skills/dev-bubbles/`, and print the path of a snippet for the user to paste into CLAUDE.md.
-- `dev-bubbles summary <repo>`: compact text made for you. Directory tree with file counts and LOC, top cross-directory import counts, current components with their file counts, components that have both own files and sub-components, unmapped files, and unmatched HTTP calls.
-- `dev-bubbles validate <repo>`: check both JSON files and print each error with its JSON path, plus components that match no file and files that match no component. Prints OK and exits 0 when clean, exits 1 otherwise.
-- `--tracked-only`: map git-tracked files only. By default the file set is `git ls-files --cached --others --exclude-standard`, so new untracked files show up right away and gitignored files never do.
+- `dev-bubbles serve [repo] [--port <n>]`: serve the live map in the foreground. The default port is 4747; when it is busy and no `--port` was given, the server takes a free port. It writes `.dev/server.json` while it runs.
+- `dev-bubbles up [repo] [--open]`: start the map server in the background unless one already runs for this repo, and print its URL. `--open` also opens the browser. Logs go to `.dev/server.log`.
+- `dev-bubbles down [repo]`: stop the background server.
+- `dev-bubbles init [repo]`: create `.dev/components.json` and `.dev/bugs.json` if missing, add the gitignore entries from the table below, copy the `/map` and `/bug` commands to `.claude/commands/` and this skill to `.claude/skills/dev-bubbles/`, write a Dev Bubbles section into `CLAUDE.md` between `<!-- dev-bubbles:start -->` and `<!-- dev-bubbles:end -->`, and merge the three hooks into `.claude/settings.json`. Safe to re-run.
+- `dev-bubbles summary [repo]`: compact text made for you. Directory tree with file counts and LOC, top cross-directory import counts, current components with their file counts, components that have both own files and sub-components, unmapped files, and unmatched HTTP calls.
+- `dev-bubbles validate [repo]`: check both JSON files and print each error with its JSON path, plus components that match no file and files that match no component. Prints OK and exits 0 when clean, exits 1 otherwise.
+- `dev-bubbles bug open <title...>`: add an open bug and print its new id, such as `b3`.
+- `dev-bubbles bug mark <id> <target> <suspected|confirmed> [reason...]`: mark a component id from `components.json` or a repo file path. Marking a target again changes its state and reason.
+- `dev-bubbles bug clear <id> <target>`: remove the mark on a target.
+- `dev-bubbles bug fix <id>`: set the bug to fixed.
+- `dev-bubbles bug list`: print the bugs with their marks.
+- `dev-bubbles hook <session|prompt|stop>`: run by the Claude Code hooks, never by hand.
 
-## The .dev-bubbles/ folder
+Every `bug` command validates, sets `updatedAt` and writes `bugs.json` atomically, and the open map follows within half a second. The file set is `git ls-files --cached --others --exclude-standard`, so new untracked files show up right away and gitignored files never do.
 
-| File | Written by | Git |
+The hooks that `init` installs in `.claude/settings.json`:
+
+- SessionStart starts the map server if it is not running and gives you the map URL and the standing rules.
+- UserPromptSubmit reminds you to record the bug when the user's message reads like a problem report.
+- Stop blocks the end of your turn, once per turn, while the map is out of date: files that match no component, components with no files, invalid JSON or bad marks.
+
+## The .dev/ folder
+
+| Path | Written by | Git |
 | --- | --- | --- |
+| `dev-bubbles/` | the setup procedure, a clone of Dev Bubbles | gitignored |
 | `components.json` | you | committed |
-| `bugs.json` | you | gitignored |
+| `bugs.json` | you, through the `bug` commands | gitignored |
 | `layout.json` | the UI, when the user drags a bubble | gitignored, never edit it |
+| `server.json` | the running map server, its pid and URL | gitignored |
+| `server.log` | the background server that `up` starts | gitignored |
 
-- Write each file as complete, valid JSON with 4-space indentation, like the examples below.
+- Write each JSON file as complete, valid JSON with 4-space indentation, like the examples below.
 - Every object is strict: an unknown key is an error.
 - A bad file never crashes the server. The map keeps the last valid version and shows the error in a banner until you fix it.
 
@@ -118,6 +127,8 @@ Pass `.` as `<repo>` when you run from the repo root.
 
 ### bugs.json
 
+The `bug` commands write this file for you. Its format:
+
 ```json
 {
     "version": 1,
@@ -150,7 +161,7 @@ Pass `.` as `<repo>` when you run from the repo root.
 - `status`: `open` or `fixed`. Fixed bugs stay in the file but are not drawn.
 - `marks`: each mark has exactly one of `component` (an id from components.json) or `file` (a repo-relative path with forward slashes, as `git ls-files` prints it), a `state` of `suspected` or `confirmed`, and a short `reason`.
 - A mark on an unknown component id or file path is skipped and reported in the banner.
-- `updatedAt`: ISO 8601 timestamp such as `2026-11-11T10:00:00Z`. Set it to the current time on every edit.
+- `updatedAt`: ISO 8601 timestamp such as `2026-11-11T10:00:00Z`, the time of the last edit.
 - On the map, suspected is striped red and confirmed is solid red. A file mark shows on the bubble that holds the file and next to the file in its details window. A mark hidden inside a closed bubble gives that bubble a red ring and a count badge.
 
 ### layout.json
@@ -161,12 +172,27 @@ Pass `.` as `<repo>` when you run from the repo root.
 
 Pinned positions in parent-local coordinates, keyed by node id: a component id, or `dir:<path>` before the repo is mapped. The UI owns this file, so read it if useful but never write it.
 
+## Bug procedure
+
+Follow this whenever a message from the user reports something broken or behaving wrong in a repo that has `.dev/components.json`, however casual ("this part doesn't work", "the export is broken", "why does login fail") and even in the middle of another task. No `/bug` is needed. The user watches the investigation live: striped red bubbles are suspects, solid red is the confirmed cause. Each step is one command that shows up on the map at once, so run them as you go, never all at the end.
+
+1. Run `dev-bubbles bug list`. If an open bug already describes this symptom, keep working on its id instead of opening a new one.
+2. Run `dev-bubbles bug open <symptom in the user's words>` and note the id it prints.
+3. Before reading any code, pick the likely components from `.dev/components.json` (or `dev-bubbles summary .`) and run `dev-bubbles bug mark <id> <component> suspected <reason>` for each. Tell the user the suspects are now striped red on the map.
+4. While you investigate, narrow the marks: mark the sub-component or file that holds the problem, add suspects you discover, and run `dev-bubbles bug clear <id> <target>` for each suspect you rule out.
+5. When you find the root cause, run `dev-bubbles bug mark <id> <target> confirmed <cause>` on the deepest matching component or the exact file, and clear the suspects that turned out uninvolved.
+6. After the fix is in and verified, run `dev-bubbles bug fix <id>`. Leave the marks as they are.
+
+- Touch only the bug you are working on. Other open bugs keep their marks.
+- When there are no components yet, mark files instead.
+- Editing `.dev/bugs.json` by hand still works, following the format above, but the commands are preferred. After a hand edit, set `updatedAt` and run `dev-bubbles validate .`.
+
 ## Map procedure
 
-1. If `.dev-bubbles/` is missing, run `dev-bubbles init .`.
+1. If `.dev/dev-bubbles/` is missing, run the setup procedure instead, which comes back here. If only `.dev/components.json` is missing, run `dev-bubbles init .`.
 2. Run `dev-bubbles summary .`. Read the tree, the cross-directory imports and the unmatched HTTP calls.
 3. Open entry points (package.json scripts, server or app bootstrap, route registration, top-level pages) and other key files only where a folder's purpose is unclear. Do not read every file.
-4. Write `.dev-bubbles/components.json` following the rules above:
+4. Write `.dev/components.json` following the rules above:
    - Group by what the code does in the product (Auth, Billing API, Web App), not by file type.
    - Make every bubble a meaningful unit, as described in "How the map shows components": leaves of roughly a handful to a few dozen files, no component with both own files and sub-components, at most 4 levels.
    - Labels say what the code does, never a raw folder or file name.
@@ -183,18 +209,6 @@ When `components.json` already has components:
 - Add components, regroup, relabel and adjust globs as needed.
 - Delete a component only when its code was deleted from the repo.
 
-When you later add a folder or feature, update `components.json` in the same change and run validate.
+## Keep the map current
 
-## Bug procedure
-
-Follow this whenever the user reports a bug in a repo that has `.dev-bubbles/`, even when they do not mention the map. The user watches the investigation live: striped red bubbles are suspects, solid red is the confirmed cause.
-
-1. Read `.dev-bubbles/components.json`, or run `dev-bubbles summary .`, and pick the likely components from the description alone.
-2. Before reading any code, add the bug to `.dev-bubbles/bugs.json`: the next free id, `"status": "open"`, `suspected` marks on those components with a short reason each, and `updatedAt`. If the file is missing, start from `{ "version": 1, "bugs": [] }`. Tell the user the suspects are now striped red on the map.
-3. Investigate. As evidence comes in, narrow the marks: replace a broad component with the sub-component or file that holds the problem, add suspects you discover, and remove suspects you ruled out.
-4. When you find the root cause, set the deepest matching component, or the exact file, to `confirmed` with the cause as its reason. Remove suspects that turned out uninvolved.
-5. After the fix is in and verified, set `"status": "fixed"` and leave the marks as they are.
-6. After every edit, set `updatedAt` and run `dev-bubbles validate .`. Fix any error before you continue.
-
-- Touch only the bug you are working on. Other open bugs keep their marks.
-- When there are no components yet, mark files instead.
+Whenever you add, move or delete files or features, update `.dev/components.json` in the same turn: a new component for a new feature, or wider globs on an existing one. Then run `dev-bubbles validate .`. The Stop hook blocks the end of your turn while files are unmapped. Never rename ids.
