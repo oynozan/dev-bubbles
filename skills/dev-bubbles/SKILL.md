@@ -178,10 +178,10 @@ Pinned positions in parent-local coordinates, keyed by node id: a component id, 
 Follow this whenever a message from the user reports something broken or behaving wrong in a repo that has `.dev/components.json`, however casual ("this part doesn't work", "the export is broken", "why does login fail") and even in the middle of another task. No `/bug` is needed. The user watches the investigation live: striped red bubbles are suspects, solid red is the confirmed cause. Each step is one command that shows up on the map at once, so run them as you go, never all at the end.
 
 1. Run `dev-bubbles bug list`. If an open bug already describes this symptom, keep working on its id instead of opening a new one.
-2. Run `dev-bubbles bug open <symptom in the user's words>` and note the id it prints.
-3. Before reading any code, pick the likely components from `.dev/components.json` (or `dev-bubbles summary .`) and run `dev-bubbles bug mark <id> <component> suspected <reason>` for each. Tell the user the suspects are now striped red on the map.
+2. Run `dev-bubbles bug open "<symptom in the user's words>"` and note the id it prints.
+3. Before reading any code, pick the likely components from `.dev/components.json` (or `dev-bubbles summary .`) and run `dev-bubbles bug mark <id> <component> suspected "<reason>"` for each. Tell the user the suspects are now striped red on the map.
 4. While you investigate, narrow the marks: mark the sub-component or file that holds the problem, add suspects you discover, and run `dev-bubbles bug clear <id> <target>` for each suspect you rule out.
-5. When you find the root cause, run `dev-bubbles bug mark <id> <target> confirmed <cause>` on the deepest matching component or the exact file, and clear the suspects that turned out uninvolved.
+5. When you find the root cause, run `dev-bubbles bug mark <id> <target> confirmed "<cause>"` on the deepest matching component or the exact file, and clear the suspects that turned out uninvolved.
 6. After the fix is in and verified, run `dev-bubbles bug fix <id>`. Leave the marks as they are.
 
 - Touch only the bug you are working on. Other open bugs keep their marks.

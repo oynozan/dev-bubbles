@@ -83,9 +83,9 @@ Without a path it uses `$DEV_BUBBLES_REPO`, then the clone itself.
 Run the bug commands yourself and watch each one land. Put a component id from your `components.json` in place of `auth` and a file of yours in place of `src/auth/session.ts`:
 
 ```sh
-dev-bubbles bug open Trying out the marks                         # prints the id, b1 here
-dev-bubbles bug mark b1 auth suspected just testing
-dev-bubbles bug mark b1 src/auth/session.ts confirmed found it
+dev-bubbles bug open "Trying out the marks"                       # prints the id, b1 here
+dev-bubbles bug mark b1 auth suspected "just testing"
+dev-bubbles bug mark b1 src/auth/session.ts confirmed "found it"
 dev-bubbles bug clear b1 auth
 dev-bubbles bug fix b1
 dev-bubbles bug list
