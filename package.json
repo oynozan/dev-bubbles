@@ -16,7 +16,7 @@
         "node": ">=22.12"
     },
     "scripts": {
-        "dev": "concurrently -k -n server,web \"tsx watch bin/cli.ts\" \"vite\"",
+        "dev": "concurrently -k -n server,web \"tsx watch bin/cli.ts --port 4747\" \"vite\"",
         "build": "vite build && tsc -p tsconfig.build.json",
         "prepare": "npm run build",
         "start": "node dist/bin/cli.js",
