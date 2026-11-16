@@ -2,19 +2,24 @@ import { spawn, spawnSync } from 'node:child_process'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { once } from 'node:events'
 import fs from 'node:fs'
+import { createRequire } from 'node:module'
+import net from 'node:net'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { makeFixture } from '../scripts/make-fixture.ts'
 
 const packageRoot = fileURLToPath(new URL('..', import.meta.url))
 const cliPath = path.join(packageRoot, 'bin', 'cli.ts')
+// An absolute loader URL, since the hooks and bug commands run with the temp repo as their working directory
+const tsxLoader = pathToFileURL(createRequire(import.meta.url).resolve('tsx')).href
 
 function runCli(...args: string[]) {
-    const result = spawnSync(process.execPath, ['--import', 'tsx', cliPath, ...args], {
-        cwd: packageRoot,
-        encoding: 'utf8',
-    })
+    return runCliIn(packageRoot, args)
+}
+
+function runCliIn(cwd: string, args: string[], input?: string) {
+    const result = spawnSync(process.execPath, ['--import', tsxLoader, cliPath, ...args], { cwd, input, encoding: 'utf8' })
     return { status: result.status, stdout: result.stdout, stderr: result.stderr }
 }
 
@@ -40,8 +45,12 @@ describe('dev-bubbles CLI', { timeout: 30_000 }, () => {
         return path.join(repoDir, '.dev', name)
     }
 
-    function writeConfig(name: string, content: unknown): void {
-        fs.writeFileSync(configFile(name), JSON.stringify(content))
+    function writeConfig(name: string, content: unknown, repoDir = repo): void {
+        fs.writeFileSync(configFile(name, repoDir), JSON.stringify(content))
+    }
+
+    function readConfig(name: string, repoDir = repo) {
+        return JSON.parse(fs.readFileSync(configFile(name, repoDir), 'utf8'))
     }
 
     beforeAll(() => {
@@ -152,16 +161,17 @@ describe('dev-bubbles CLI', { timeout: 30_000 }, () => {
         expect(stderr).toContain('Not inside a git repository')
     })
 
-    it('serve prints the URL it listens on and streams snapshots there', async () => {
+    it('serve prints its URL, records it in server.json and streams snapshots there', async () => {
         const freshRepo = makeRepo()
-        const child = spawn(process.execPath, ['--import', 'tsx', cliPath, 'serve', freshRepo, '--port', '0'], {
+        const child = spawn(process.execPath, ['--import', tsxLoader, cliPath, 'serve', freshRepo, '--port', '0'], {
             cwd: packageRoot,
         })
         try {
             const line = await readLine(child)
             expect(line).toContain(`Dev Bubbles serving ${freshRepo} at http://127.0.0.1:`)
             const url = line.slice(line.lastIndexOf(' ') + 1)
-            const response = await fetch(`${url}/api/events`)
+            expect(readConfig('server.json', freshRepo)).toEqual({ pid: child.pid, url })
+            const response = await fetch(new URL('api/events', url))
             const reader = response.body?.pipeThrough(new TextDecoderStream()).getReader()
             const firstChunk = await reader?.read()
             expect(firstChunk?.value).toMatch(/^data: \{"root":/)
@@ -171,8 +181,51 @@ describe('dev-bubbles CLI', { timeout: 30_000 }, () => {
             // Windows cannot delete the repo in afterAll while the server still watches it
             if (child.exitCode === null && child.signalCode === null) await once(child, 'exit')
         }
+        // Windows ends a killed process without running its exit handlers
+        if (process.platform !== 'win32') expect(fs.existsSync(configFile('server.json', freshRepo))).toBe(false)
+    })
+
+    it('up starts one background server and reuses it, and down stops it', async () => {
+        const freshRepo = makeRepo()
+        runCli('init', freshRepo)
+        // Holding the default port shows the fallback and keeps the test off a server the user runs there
+        const blocker = net.createServer()
+        await new Promise<void>((resolve) => blocker.once('error', () => resolve()).listen(4747, '127.0.0.1', resolve))
+        let pid: number | undefined
+        try {
+            const first = runCli('up', freshRepo)
+            expect(first).toMatchObject({ status: 0, stdout: expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/\n$/) })
+            const url = first.stdout.trim()
+            expect(url).not.toBe('http://127.0.0.1:4747/')
+            pid = readConfig('server.json', freshRepo).pid
+            expect(readConfig('server.json', freshRepo)).toEqual({ pid, url })
+            expect(isAlive(pid!)).toBe(true)
+
+            expect(runCli('up', freshRepo).stdout).toBe(`${url}\n`)
+            expect(readConfig('server.json', freshRepo).pid).toBe(pid)
+
+            expect(runCli('down', freshRepo).stdout).toBe(`Stopped the Dev Bubbles server at ${url} (pid ${pid})\n`)
+            await vi.waitFor(() => expect(isAlive(pid!)).toBe(false), { timeout: 5000 })
+            expect(fs.existsSync(configFile('server.json', freshRepo))).toBe(false)
+            expect(runCli('down', freshRepo).stdout).toBe('No Dev Bubbles server is running for this repo\n')
+        } finally {
+            blocker.close()
+            if (pid !== undefined && isAlive(pid)) {
+                process.kill(pid)
+                await vi.waitFor(() => expect(isAlive(pid!)).toBe(false), { timeout: 5000 })
+            }
+        }
     })
 })
+
+function isAlive(pid: number): boolean {
+    try {
+        process.kill(pid, 0)
+        return true
+    } catch {
+        return false
+    }
+}
 
 function readLine(child: ChildProcessWithoutNullStreams): Promise<string> {
     return new Promise((resolve, reject) => {

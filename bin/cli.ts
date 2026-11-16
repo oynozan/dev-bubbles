@@ -13,24 +13,28 @@ import type { JsonFileResult } from '../server/json-file.ts'
 import { findPackageRoot } from '../server/package-root.ts'
 import { fileId, ownFilesId } from '../shared/schema.ts'
 import type { Edge, FileRef, Manifest, TreeNode } from '../shared/schema.ts'
+import { openInBrowser, recordServer, startBackgroundServer, stopBackgroundServer } from './background.ts'
 import { findErrors, loadRepo, unmappedPaths } from './repo.ts'
 
 const defaultPort = 4747
 const listLimit = 200
 const importPairLimit = 30
-const commands = new Set(['serve', 'init', 'summary', 'validate'])
+const commands = new Set(['serve', 'up', 'down', 'init', 'summary', 'validate'])
 
 const usage = `Usage: dev-bubbles [command] [repo] [options]
 
 Commands:
-    serve           Serve the live map (default)
-    init            Set up .dev-bubbles/ and the Claude Code commands in the repo
+    serve           Serve the live map in the foreground (default)
+    up              Start the map server in the background unless it already runs, and print its URL
+    down            Stop the background map server
+    init            Set up ${configDir}/ and the Claude Code commands in the repo
     summary         Print a compact overview of the repo for a coding agent
     validate        Check components.json and bugs.json, exit 1 on any error
 
 Options:
     --repo <path>   Repository when [repo] is not given (default: $DEV_BUBBLES_REPO or the current directory)
-    --port <n>      Port for serve, 0 picks a free one (default: ${defaultPort})
+    --port <n>      Port for serve, 0 picks a free one (default: ${defaultPort}, or a free one when it is busy)
+    --open          Open the map in the browser (up)
     --tracked-only  Leave out files git does not track (serve, summary, validate)
     -h, --help      Show this help`
 
@@ -45,7 +49,8 @@ function readArgs() {
             allowPositionals: true,
             options: {
                 repo: { type: 'string' },
-                port: { type: 'string', default: String(defaultPort) },
+                port: { type: 'string' },
+                open: { type: 'boolean', default: false },
                 'tracked-only': { type: 'boolean', default: false },
                 help: { type: 'boolean', short: 'h' },
             },
@@ -67,14 +72,25 @@ function isAddressInUse(error: unknown): boolean {
     return error instanceof Error && 'code' in error && error.code === 'EADDRINUSE'
 }
 
-async function serve(repo: string, port: number, trackedOnly: boolean): Promise<void> {
+async function serve(repo: string, port: number | undefined, trackedOnly: boolean): Promise<void> {
     try {
-        const server = await startServer({ repo, port, trackedOnly })
-        const { port: actualPort } = server.address() as AddressInfo
-        console.log(`Dev Bubbles serving ${repo} at http://127.0.0.1:${actualPort}`)
+        const repoRoot = await findRepoRoot(repo)
+        const server = await startServer({ repo: repoRoot, port: port ?? defaultPort, trackedOnly }).catch((error: unknown) => {
+            if (port !== undefined || !isAddressInUse(error)) throw error
+            return startServer({ repo: repoRoot, port: 0, trackedOnly })
+        })
+        const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`
+        recordServer(repoRoot, url)
+        console.log(`Dev Bubbles serving ${repo} at ${url}`)
     } catch (error) {
         fail(isAddressInUse(error) ? `Port ${port} is already in use, pick another with --port <n>` : errorMessage(error))
     }
+}
+
+async function up(repoRoot: string, open: boolean): Promise<void> {
+    const url = await startBackgroundServer(repoRoot)
+    console.log(url)
+    if (open) openInBrowser(url)
 }
 
 /* Init */
@@ -239,8 +255,10 @@ if (values.help) {
     process.exit(0)
 }
 
-const [command = 'serve', repoArg, ...extraArgs] = positionals
+const [command = 'serve', ...args] = positionals
 if (!commands.has(command)) fail(`Unknown command: ${command}\n\n${usage}`)
+
+const [repoArg, ...extraArgs] = args
 if (extraArgs.length > 0) fail(`Unexpected arguments: ${extraArgs.join(' ')}\n\n${usage}`)
 
 const repo = path.resolve(repoArg ?? values.repo ?? process.env.DEV_BUBBLES_REPO ?? process.cwd())
@@ -251,11 +269,13 @@ if (!fs.statSync(repo, { throwIfNoEntry: false })?.isDirectory()) {
 const trackedOnly = values['tracked-only']
 
 if (command === 'serve') {
-    await serve(repo, parsePort(values.port), trackedOnly)
+    await serve(repo, values.port === undefined ? undefined : parsePort(values.port), trackedOnly)
 } else {
     try {
         const repoRoot = await findRepoRoot(repo)
         if (command === 'init') init(repoRoot)
+        else if (command === 'up') await up(repoRoot, values.open)
+        else if (command === 'down') console.log(await stopBackgroundServer(repoRoot))
         else if (command === 'summary') console.log(await summarize(repoRoot, trackedOnly))
         else process.exitCode = await validate(repoRoot, trackedOnly)
     } catch (error) {
