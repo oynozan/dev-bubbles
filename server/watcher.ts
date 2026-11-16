@@ -1,12 +1,14 @@
 import path from 'node:path'
 import { watch } from 'chokidar'
-import { errorMessage } from './json-file.ts'
+import { configDir, errorMessage } from './json-file.ts'
 
 export type RepoWatcher = {
     close(): Promise<void>
 }
 
 const ignoredSegments = new Set(['.git', 'node_modules', 'dist', 'build', '.next'])
+// The config folder also holds the server log and the dev-bubbles clone, which would rescan in a loop
+const watchedConfigFiles = new Set(['components.json', 'bugs.json', 'layout.json'])
 const debounceMs = 300
 
 // A file written nonstop, such as a dev server log, still lets a rescan through
@@ -45,5 +47,6 @@ export function watchRepo(repoRoot: string, gitFiles: string[], onChange: () => 
 function isIgnoredPath(repoRoot: string, gitFiles: string[], filePath: string): boolean {
     if (gitFiles.some((gitFile) => filePath === gitFile || filePath === path.dirname(gitFile))) return false
     const segments = path.relative(repoRoot, filePath).split(path.sep)
+    if (segments[0] === configDir && segments.length > 1) return segments.length > 2 || !watchedConfigFiles.has(segments[1])
     return segments[0] === '..' || segments.some((segment) => ignoredSegments.has(segment))
 }

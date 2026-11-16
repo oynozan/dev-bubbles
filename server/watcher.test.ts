@@ -67,6 +67,20 @@ describe('watchRepo', () => {
         expect(calls).toBe(0)
     })
 
+    it('ignores the config folder except the map files', async () => {
+        fs.mkdirSync(path.join(dir, '.dev', 'dev-bubbles', 'server'), { recursive: true })
+        await startWatching()
+        fs.appendFileSync(path.join(dir, '.dev', 'server.log'), 'listening\n')
+        fs.writeFileSync(path.join(dir, '.dev', 'server.json'), '{}\n')
+        fs.writeFileSync(path.join(dir, '.dev', 'dev-bubbles', 'server', 'index.ts'), 'export {}\n')
+        await delay(600)
+        expect(calls).toBe(0)
+        const tempPath = path.join(dir, '.dev', 'bugs.json.1.tmp')
+        fs.writeFileSync(tempPath, '{}\n')
+        fs.renameSync(tempPath, path.join(dir, '.dev', 'bugs.json'))
+        await expectOneCall()
+    })
+
     it('calls back when the git index changes', async () => {
         await startWatching()
         fs.writeFileSync(gitIndexPath, 'index 2\n')
