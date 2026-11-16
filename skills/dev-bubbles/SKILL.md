@@ -22,7 +22,7 @@ Run this when the user asks to set up Dev Bubbles, or when `.dev/dev-bubbles/` i
 
 ## CLI
 
-`[repo]` defaults to the current directory, so pass nothing or `.` from the project root.
+`[repo]` defaults to the current directory, so pass nothing or `.` from the project root. The `bug` commands take no `[repo]` and act on the repo you run them in.
 
 - `dev-bubbles serve [repo] [--port <n>]`: serve the live map in the foreground. The default port is 4747; when it is busy and no `--port` was given, the server takes a free port. It writes `.dev/server.json` while it runs.
 - `dev-bubbles up [repo] [--open]`: start the map server in the background unless one already runs for this repo, and print its URL. `--open` also opens the browser. Logs go to `.dev/server.log`.
