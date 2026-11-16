@@ -30,6 +30,14 @@ export function formatJson(value: unknown): string {
     return `${JSON.stringify(value, null, 4)}\n`
 }
 
+// Through a temp file and a rename, so the watcher never reads a half-written file
+export function writeJsonFile(filePath: string, value: unknown): void {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true })
+    const tempPath = `${filePath}.${process.pid}.tmp`
+    fs.writeFileSync(tempPath, formatJson(value))
+    fs.renameSync(tempPath, filePath)
+}
+
 function formatJsonPath(keys: readonly PropertyKey[]): string {
     return keys.map((key, index) => {
         if (typeof key === 'number') return `[${key}]`

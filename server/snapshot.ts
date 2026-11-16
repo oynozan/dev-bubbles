@@ -1,4 +1,3 @@
-import fs from 'node:fs'
 import path from 'node:path'
 import type { z } from 'zod'
 import { bugsFileSchema, layoutFileSchema, manifestSchema, ROOT_ID } from '../shared/schema.ts'
@@ -10,7 +9,7 @@ import type { EdgeIndex } from './edges.ts'
 import { listCommits, resolveCommit, withCommitTree } from './history.ts'
 import { createInventory, listRepoFiles } from './inventory.ts'
 import type { InventoryFile } from './inventory.ts'
-import { configDir, errorMessage, formatJson, readJsonFile } from './json-file.ts'
+import { configDir, errorMessage, readJsonFile, writeJsonFile } from './json-file.ts'
 
 export type SnapshotSource = {
     rescan(): Promise<Snapshot>
@@ -152,13 +151,6 @@ function createLastValidReader<T>(
         if (result.status === 'ok' && problems.length === 0) lastValid = result.value
         return lastValid
     }
-}
-
-function writeJsonFile(filePath: string, value: unknown): void {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true })
-    const tempPath = `${filePath}.${process.pid}.tmp`
-    fs.writeFileSync(tempPath, formatJson(value))
-    fs.renameSync(tempPath, filePath)
 }
 
 function emptySnapshot(repoName: string): Snapshot {
