@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { z } from 'zod'
 
-export const configDir = '.dev-bubbles'
+export const configDir = '.dev'
 
 export type JsonFileResult<T> =
     | { status: 'missing' }

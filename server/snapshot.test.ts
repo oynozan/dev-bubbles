@@ -56,9 +56,9 @@ describe('createSnapshotSource', () => {
     let source: SnapshotSource
 
     function writeConfig(fileName: string, content: unknown): void {
-        fs.mkdirSync(path.join(fixtureDir, '.dev-bubbles'), { recursive: true })
+        fs.mkdirSync(path.join(fixtureDir, '.dev'), { recursive: true })
         const text = typeof content === 'string' ? content : JSON.stringify(content)
-        fs.writeFileSync(path.join(fixtureDir, '.dev-bubbles', fileName), text)
+        fs.writeFileSync(path.join(fixtureDir, '.dev', fileName), text)
     }
 
     beforeEach(() => {
@@ -110,7 +110,7 @@ describe('createSnapshotSource', () => {
         const broken = await source.rescan()
         expect(nodeIds(broken.root)).toContain('auth')
         expect(broken.errors).toEqual([expect.stringMatching(/^components\.json: /)])
-        fs.rmSync(path.join(fixtureDir, '.dev-bubbles', 'components.json'))
+        fs.rmSync(path.join(fixtureDir, '.dev', 'components.json'))
         const missing = await source.rescan()
         expect(nodeIds(missing.root)).not.toContain('auth')
         expect(missing.errors).toEqual([])
@@ -192,7 +192,7 @@ describe('createSnapshotSource', () => {
     })
 
     it('sets and clears pins in layout.json', async () => {
-        const layoutPath = path.join(fixtureDir, '.dev-bubbles', 'layout.json')
+        const layoutPath = path.join(fixtureDir, '.dev', 'layout.json')
         source.setPin({ id: 'dir:src', pin: [1.5, 2] })
         source.setPin({ id: 'file:src/lib/url.ts', pin: [-3, 4] })
         source.setPin({ id: 'dir:src', pin: null })

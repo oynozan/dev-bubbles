@@ -129,8 +129,8 @@ describe('startServer', () => {
 
     it('skips snapshots that did not change', async () => {
         await events.next()
-        fs.mkdirSync(path.join(fixtureDir, '.dev-bubbles'), { recursive: true })
-        fs.writeFileSync(path.join(fixtureDir, '.dev-bubbles', 'notes.txt'), 'not part of the map\n')
+        fs.mkdirSync(path.join(fixtureDir, '.dev'), { recursive: true })
+        fs.writeFileSync(path.join(fixtureDir, '.dev', 'notes.txt'), 'not part of the map\n')
         await delay(700)
         fs.writeFileSync(path.join(fixtureDir, 'src', 'later.ts'), 'export {}\n')
         const next = await events.next()
@@ -139,7 +139,7 @@ describe('startServer', () => {
 
     it('saves a pin to layout.json and pushes it in the next snapshot', async () => {
         await events.next()
-        const layoutPath = path.join(fixtureDir, '.dev-bubbles', 'layout.json')
+        const layoutPath = path.join(fixtureDir, '.dev', 'layout.json')
         const response = await postLayout(baseUrl, JSON.stringify({ id: 'dir:src/auth', pin: [12.5, -40] }))
         expect(response.status).toBe(204)
         expect(JSON.parse(fs.readFileSync(layoutPath, 'utf8'))).toEqual({ version: 1, pins: { 'dir:src/auth': [12.5, -40] } })
@@ -207,8 +207,8 @@ describe('startServer history', () => {
     beforeAll(async () => {
         repo = makeFixture()
         first = git(repo, 'rev-parse', 'HEAD')
-        fs.mkdirSync(path.join(repo, '.dev-bubbles'))
-        fs.writeFileSync(path.join(repo, '.dev-bubbles', 'components.json'), JSON.stringify({
+        fs.mkdirSync(path.join(repo, '.dev'))
+        fs.writeFileSync(path.join(repo, '.dev', 'components.json'), JSON.stringify({
             version: 1,
             ignore: ['src/config/**'],
             components: [{ id: 'auth', label: 'Auth', include: ['src/auth/**'] }],
@@ -269,7 +269,7 @@ describe('startServer history', () => {
         const past: Snapshot = await (await getSnapshot(`?commit=${second}`)).json()
         expect(past.commit).toBe(second)
         expect(filePaths(past.root)).toContain('src/added.ts')
-        expect(filePaths(past.root).filter((filePath) => filePath.startsWith('.dev-bubbles/'))).toEqual([])
+        expect(filePaths(past.root).filter((filePath) => filePath.startsWith('.dev/'))).toEqual([])
     })
 
     it.each(['', '?commit=', '?commit=abc', `?commit=${'a'.repeat(65)}`, '?commit=HEAD', '?commit=--all', '?commit=abcd%20'])(

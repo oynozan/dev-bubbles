@@ -31,7 +31,7 @@ describe('inventory', () => {
         writeFile(fixtureDir, 'assets/logo.bin', Buffer.from([1, 2, 0, 3, 10]))
         writeFile(fixtureDir, 'assets/model.glb', `version https://git-lfs.github.com/spec/v1\noid sha256:${'0'.repeat(64)}\nsize 9\n`)
         writeFile(fixtureDir, 'assets/huge.txt', 'x\n'.repeat(600 * 1024))
-        writeFile(fixtureDir, '.dev-bubbles/components.json', '{}\n')
+        writeFile(fixtureDir, '.dev/components.json', '{}\n')
         files = await repoInventory(fixtureDir).scan([])
     })
 
@@ -52,7 +52,7 @@ describe('inventory', () => {
         expect(paths).not.toContain('assets/logo.bin')
         expect(paths).not.toContain('assets/model.glb')
         expect(paths).not.toContain('assets/huge.txt')
-        expect(paths.filter((filePath) => filePath.startsWith('.dev-bubbles/'))).toEqual([])
+        expect(paths.filter((filePath) => filePath.startsWith('.dev/'))).toEqual([])
     })
 
     it('counts lines including a final line without a newline', () => {
@@ -97,8 +97,8 @@ describe('inventory from a given file list', () => {
             writeFile(dir, 'src/b.ts', 'unlisted\n')
             writeFile(dir, 'src/c.test.ts', 'ignored\n')
             writeFile(dir, 'logo.bin', Buffer.from([1, 0, 2]))
-            writeFile(dir, '.dev-bubbles/components.json', '{}\n')
-            const listed = ['src/a.ts', 'src/c.test.ts', 'logo.bin', '.dev-bubbles/components.json', 'src/gone.ts']
+            writeFile(dir, '.dev/components.json', '{}\n')
+            const listed = ['src/a.ts', 'src/c.test.ts', 'logo.bin', '.dev/components.json', 'src/gone.ts']
             const files = await createInventory(dir, async () => listed).scan(['**/*.test.ts'])
             expect(files.map((file) => [file.path, file.loc])).toEqual([['src/a.ts', 2]])
         } finally {

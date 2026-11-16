@@ -37,7 +37,7 @@ describe('dev-bubbles CLI', { timeout: 30_000 }, () => {
     }
 
     function configFile(name: string, repoDir = repo): string {
-        return path.join(repoDir, '.dev-bubbles', name)
+        return path.join(repoDir, '.dev', name)
     }
 
     function writeConfig(name: string, content: unknown): void {
@@ -60,7 +60,7 @@ describe('dev-bubbles CLI', { timeout: 30_000 }, () => {
         expect(fs.readFileSync(configFile('components.json', freshRepo), 'utf8')).toBe('{\n    "version": 1,\n    "components": []\n}\n')
         expect(JSON.parse(fs.readFileSync(configFile('bugs.json', freshRepo), 'utf8'))).toEqual({ version: 1, bugs: [] })
         const gitignore = fs.readFileSync(path.join(freshRepo, '.gitignore'), 'utf8').split('\n')
-        expect(gitignore).toEqual(expect.arrayContaining(['node_modules', '.dev-bubbles/bugs.json', '.dev-bubbles/layout.json']))
+        expect(gitignore).toEqual(expect.arrayContaining(['node_modules', '.dev/bugs.json', '.dev/layout.json']))
         expect(fs.existsSync(path.join(freshRepo, '.claude', 'commands', 'map.md'))).toBe(true)
         expect(fs.existsSync(path.join(freshRepo, '.claude', 'skills', 'dev-bubbles', 'SKILL.md'))).toBe(true)
         expect(stdout).toContain(path.join(packageRoot, 'templates', 'claude-snippet.md'))
@@ -69,7 +69,7 @@ describe('dev-bubbles CLI', { timeout: 30_000 }, () => {
     it('init never overwrites existing files', () => {
         const freshRepo = makeRepo()
         const manifest = '{ "version": 1, "components": [], "ignore": [] }'
-        fs.mkdirSync(path.join(freshRepo, '.dev-bubbles'))
+        fs.mkdirSync(path.join(freshRepo, '.dev'))
         fs.writeFileSync(configFile('components.json', freshRepo), manifest)
         runCli('init', freshRepo)
         const { status, stdout } = runCli('init', freshRepo)
@@ -77,7 +77,7 @@ describe('dev-bubbles CLI', { timeout: 30_000 }, () => {
         expect(fs.readFileSync(configFile('components.json', freshRepo), 'utf8')).toBe(manifest)
         expect(stdout).toContain('skipped')
         const gitignore = fs.readFileSync(path.join(freshRepo, '.gitignore'), 'utf8')
-        expect(gitignore.match(/\.dev-bubbles\/bugs\.json/g)).toHaveLength(1)
+        expect(gitignore.match(/\.dev\/bugs\.json/g)).toHaveLength(1)
     })
 
     it('validate passes on a fresh setup', () => {
