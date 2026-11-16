@@ -103,7 +103,7 @@ Nothing polls. The server watches the files, the git index and HEAD, and the `.d
 dev-bubbles <command> [repo] [options]
 ```
 
-`[repo]` defaults to the current directory. Any folder inside a git repository works, Dev Bubbles always maps the whole repository.
+`[repo]` defaults to the current directory, and the bug commands take no `[repo]`. Any folder inside a git repository works, Dev Bubbles always maps the whole repository.
 
 | Command | What it does |
 | --- | --- |
@@ -121,15 +121,17 @@ dev-bubbles <command> [repo] [options]
 | `bug mark <id> <target> <suspected\|confirmed> [reason...]` | Mark a component id or a repo file path |
 | `bug clear <id> <target>` | Remove the mark on a target |
 | `bug fix <id>` | Set the bug to fixed, which takes its marks off the map |
-| `bug list` | Print the bugs and their marks |
+| `bug list` | Print the open bugs and their marks |
 
 Every bug command validates its input, sets `updatedAt` and writes `bugs.json` atomically.
 
-| Option | |
-| --- | --- |
-| `--port <n>` | Port for `serve` |
-| `--open` | Open the map in the browser after `up` |
-| `-h`, `--help` | Show the help |
+| Option | Default | |
+| --- | --- | --- |
+| `--repo <path>` | `$DEV_BUBBLES_REPO`, then the current directory | Repository when `[repo]` is not given, and for the bug commands |
+| `--port <n>` | `4747`, or a free port when it is busy | Port for `serve`, `0` picks a free one |
+| `--open` | off | Open the map in the browser after `up` |
+| `--tracked-only` | off | Leave out files git does not track (`serve`, `summary`, `validate`) |
+| `-h`, `--help` | | Show the help |
 
 By default the map holds every file from `git ls-files --cached --others --exclude-standard`, so new files show up before they are committed and gitignored files never do. Binary files and files over 1 MB are left out. The server only listens on `127.0.0.1`.
 

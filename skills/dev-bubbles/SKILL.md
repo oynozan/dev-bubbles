@@ -31,13 +31,14 @@ Run this when `.dev/dev-bubbles/` is missing or the user asks to set up Dev Bubb
 - `dev-bubbles summary [repo]`: compact text made for you. Directory tree with file counts and LOC, top cross-directory import counts, current components with their file counts, components that have both own files and sub-components, unmapped files, and unmatched HTTP calls.
 - `dev-bubbles validate [repo]`: check both JSON files and print each error with its JSON path, plus components that match no file and files that match no component. Prints OK and exits 0 when clean, exits 1 otherwise.
 - `dev-bubbles bug open <title...>`: add an open bug and print its new id, such as `b3`.
-- `dev-bubbles bug mark <id> <target> <suspected|confirmed> [reason...]`: mark a component id from `components.json` or a repo file path. Marking a target again changes its state and reason.
+- `dev-bubbles bug mark <id> <target> <suspected|confirmed> [reason...]`: mark a component id from `components.json` or a repo file path. Marking a target again changes its state and reason. A target that is neither is refused, with the closest component ids.
 - `dev-bubbles bug clear <id> <target>`: remove the mark on a target.
 - `dev-bubbles bug fix <id>`: set the bug to fixed.
-- `dev-bubbles bug list`: print the bugs with their marks.
+- `dev-bubbles bug list`: print the open bugs with their marks.
 - `dev-bubbles hook <session|prompt|stop>`: run by the Claude Code hooks, never by hand.
+- `--tracked-only`: map git-tracked files only. By default the file set is `git ls-files --cached --others --exclude-standard`, so new untracked files show up right away and gitignored files never do.
 
-Every `bug` command validates, sets `updatedAt` and writes `bugs.json` atomically, and the open map follows within half a second. The file set is `git ls-files --cached --others --exclude-standard`, so new untracked files show up right away and gitignored files never do.
+Every `bug` command validates, sets `updatedAt` and writes `bugs.json` atomically, and the open map follows within half a second.
 
 The hooks that `init` installs in `.claude/settings.json`:
 
