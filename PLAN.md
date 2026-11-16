@@ -2,7 +2,7 @@
 
 Dev Bubbles (`dev-bubbles`). Fork of `githubocto/repo-visualizer` (MIT), turned into a lightweight local React app.
 
-The slug `dev-bubbles` is used for the CLI, the package name and the per-repo config folder `.dev-bubbles/`.
+The slug `dev-bubbles` is used for the CLI and the package name. Everything Dev Bubbles owns in a target repo lives in `.dev/`, with the clone of Dev Bubbles itself in `.dev/dev-bubbles/`.
 
 ## Rules for Claude Code
 
@@ -25,18 +25,21 @@ A local dashboard that shows a git repo as live, nested bubbles (components → 
 
 ## Key decisions
 
-1. **One local Node process.** `dev-bubbles --repo <path>` scans and watches the repo, runs analysis, and serves the React app plus an event stream. Bind to `127.0.0.1` only.
-2. **Files are the source of truth**, in `<repo>/.dev-bubbles/`:
+1. **One local Node process.** `dev-bubbles serve [repo]` scans and watches the repo, runs analysis, and serves the React app plus an event stream. `dev-bubbles up` starts the same server in the background, at most one per repo, and `down` stops it. Bind to `127.0.0.1` only.
+2. **Files are the source of truth**, in `<repo>/.dev/`:
    - `components.json`: written by the agent; commit it.
-   - `bugs.json`: written by the agent; gitignored.
+   - `bugs.json`: written by the agent through `dev-bubbles bug`; gitignored.
    - `layout.json`: pinned positions written by the UI; gitignored.
+   - `server.json` and `server.log`: pid, URL and log of the running server; gitignored.
+   - `dev-bubbles/`: the clone of Dev Bubbles; gitignored.
 
-   The server watches these like any other file. Edits show up live.
-3. **AI labels come from the coding agent** through a slash command, so no API key is needed. The map shows only the names the agent writes, never file or folder names. When there's no manifest yet, fall back to the directory tree drawn without names, with a hint to run `/map`.
+   The server watches the JSON files like any other file. Edits show up live.
+3. **AI labels come from the coding agent** through the dev-bubbles skill and slash commands, so no API key is needed. The map shows only the names the agent writes, never file or folder names. When there's no manifest yet, fall back to the directory tree drawn without names, with a hint to run `/map`.
 4. **File set:** `git ls-files --cached --others --exclude-standard`. That's tracked files plus untracked files that aren't gitignored, so files the agent just created appear before they're committed. Add a `--tracked-only` flag for strict mode.
-5. **Transport:** Server-Sent Events from server to client (full snapshot, debounced). Plain `POST` from client to server for layout pins. No WebSocket.
+5. **Transport:** Server-Sent Events from server to client (full snapshot, debounced). Plain `POST` from client to server for layout pins. No WebSocket. The client reconnects on its own when the server restarts.
 6. **Rendering:** SVG. React renders the node structure. d3-force writes positions straight to DOM refs on each tick; never call `setState` per tick. Target is up to about 3k files.
 7. **Commit history:** the snapshot lists the last 100 commits. Picking one in the list at the bottom left shows the map at that commit, grouped and named by the current `components.json`, so the names stay the same across history.
+8. **One-step install:** `npx skills add oynozan/dev-bubbles`, then the user asks the agent to set up Dev Bubbles. The skill has the agent clone Dev Bubbles into `.dev/dev-bubbles/`, build it, run `init` and `up --open`, and map the repo. Claude Code hooks then start the server in every session, push the agent to record bug reports on the map, and keep it from ending a turn while the map is out of date.
 
 ## Stack
 
@@ -48,7 +51,7 @@ A local dashboard that shows a git repo as live, nested bubbles (components → 
 ## Target layout
 
 ```
-bin/cli.ts                  serve (default) | init | summary | validate
+bin/cli.ts                  serve | up | down | init | summary | validate | bug | hook
 server/
   index.ts                  static app, GET /api/events (SSE), POST /api/layout
   inventory.ts              git ls-files, set diff, LOC per file
@@ -84,9 +87,10 @@ web/
     utils.ts                from the original (truncateString, keepBetween, keepCircleInsideCircle, …)
     time.ts                 relative ages for bugs and commits
 templates/
-  claude-snippet.md         paste into the target repo's CLAUDE.md
+  claude-snippet.md         written into the target repo's CLAUDE.md by init
   commands/map.md           /map slash command
   commands/bug.md           /bug slash command
+skills/dev-bubbles/SKILL.md the agent skill: setup, formats, bug and map procedures
 fixtures/sample-app/        small app used by tests and manual checks
 scripts/make-fixture.ts     copies the fixture to a temp dir and makes it its own git repo
 scripts/demo-bug.ts         plays a scripted bug through bugs.json (npm run demo:bug)
@@ -208,7 +212,7 @@ type Snapshot = {
   - Find the repo root with `git rev-parse --show-toplevel`, then run `git ls-files --cached --others --exclude-standard -z`.
   - Count LOC per file. Skip binaries (null byte in the first 8 KB) and files over 1 MB. Apply the manifest `ignore` globs.
 - `watcher.ts`:
-  - Run chokidar on the repo root, using an `ignored` function for `.git/`, `node_modules`, `dist`, `build`, `.next`.
+  - Run chokidar on the repo root, using an `ignored` function for `.git/`, `node_modules`, `dist`, `build`, `.next`. Also watch the git index and HEAD, so `git add`, commits and resets update the file set and the commit list.
   - On any event, debounce 300 ms, re-run `ls-files`, diff the sets, and re-read only added or changed files (by mtime + size).
 - `GET /api/events` (SSE): sends a full snapshot on connect and after each rescan. Remove the temporary `/api/snapshot`.
 - **Done when:**
@@ -254,11 +258,12 @@ type Snapshot = {
 ### Phase 3: Components manifest and AI labels
 
 - `components.ts`: load `components.json` and validate it with zod, apply the assignment rules above, and fall back to the directory tree when the file is missing. Validation errors go to `snapshot.errors` and show in `ErrorBanner`; the last valid manifest stays in use.
-- CLI `init <repo>`:
-  - Create `.dev-bubbles/` with an empty `components.json` and `bugs.json`.
-  - Add `bugs.json` and `layout.json` to the target repo's `.gitignore`.
-  - Copy `templates/commands/*.md` to `<repo>/.claude/commands/`.
-  - Print where `claude-snippet.md` is, so the user can paste it into CLAUDE.md.
+- CLI `init [repo]`, safe to re-run:
+  - Create `.dev/components.json` and `.dev/bugs.json` if missing.
+  - Gitignore `.dev/dev-bubbles/`, `bugs.json`, `layout.json`, `server.json` and `server.log`.
+  - Copy `templates/commands/*.md` to `<repo>/.claude/commands/` and the skill to `<repo>/.claude/skills/dev-bubbles/`.
+  - Write `claude-snippet.md` into the repo's CLAUDE.md between `<!-- dev-bubbles:start -->` and `<!-- dev-bubbles:end -->`.
+  - Merge the hooks from Phase 7 into `<repo>/.claude/settings.json`.
 - CLI `summary <repo>`: compact text for the agent. Shows:
   - the directory tree with file counts and LOC
   - the top cross-directory import counts (once Phase 4 exists)
@@ -325,16 +330,43 @@ type Snapshot = {
   - Clicking a bug zooms to fit its marks and shows each mark's `reason`.
   - With several open bugs, all marks are shown; selecting one dims the others.
 - `scripts/demo-bug.ts` (`npm run demo:bug -- [repo]`) tests the flow without an agent. It writes a demo bug in steps 4 s apart (three suspected components, one component and one file, the file confirmed, fixed) and then removes it, keeping other bugs.
-- `templates/commands/bug.md` and `templates/claude-snippet.md` tell the agent, when the user reports a bug, to:
-  1. Read `components.json` (or run `summary`).
-  2. Add a bug with `suspected` marks on the likely components before digging into code.
-  3. Narrow the marks as evidence comes in, and remove suspects that get ruled out.
-  4. When the root cause is found, set the deepest matching component or file to `confirmed`.
-  5. After the fix, set `status: "fixed"`.
-  6. Run `dev-bubbles validate` after every edit.
+- `templates/commands/bug.md`, `templates/claude-snippet.md` and the skill tell the agent, whenever the user reports a problem, even casually, to:
+  1. Run `dev-bubbles bug list` to avoid a duplicate.
+  2. `bug open` the symptom in the user's words.
+  3. `bug mark` the likely components `suspected` before digging into code.
+  4. Narrow the marks as evidence comes in, and `bug clear` suspects that get ruled out.
+  5. When the root cause is found, `bug mark` the deepest matching component or file `confirmed`.
+  6. After the fix, `bug fix`.
 - **Done when:**
   - Hand-editing `bugs.json` updates the map within 1 s.
   - Running `/bug <description>` on the fixture first shows striped suspects, then a solid red bubble as the agent narrows it down.
+
+### Phase 7: One-step install and agent integration
+
+- The skill's setup procedure, run from the target repo's root:
+  1. `git clone https://github.com/oynozan/dev-bubbles.git .dev/dev-bubbles`, or `git -C .dev/dev-bubbles pull` when the clone exists.
+  2. `npm install --prefix .dev/dev-bubbles`, which also builds `dist/`.
+  3. `node .dev/dev-bubbles/dist/bin/cli.js init .`
+  4. `node .dev/dev-bubbles/dist/bin/cli.js up --open`
+  5. The map procedure.
+- CLI server commands:
+  - `serve [repo] [--port n]`: port 4747 by default, a free port when it is busy and no `--port` was given. Writes `.dev/server.json` while running.
+  - `up [repo] [--open]`: start the server in the background unless one already runs for this repo, and print its URL. Logs go to `.dev/server.log`.
+  - `down [repo]`: stop it.
+- CLI bug commands, so the agent records each step with one call. Each validates, sets `updatedAt` and writes `bugs.json` atomically:
+  - `bug open <title...>` prints the new id.
+  - `bug mark <id> <target> <suspected|confirmed> [reason...]`, where the target is a component id or a repo file path.
+  - `bug clear <id> <target>`, `bug fix <id>` and `bug list`.
+- `hook <session|prompt|stop>`, which `init` installs as Claude Code hooks:
+  - SessionStart: start the server if it is not running and give the agent the map URL and the standing rules (record bug reports at once, keep `components.json` current, offer to map a repo with no components).
+  - UserPromptSubmit: when the message reads like a problem report ("doesn't work", "broken", "error", "wrong"), remind the agent to record the bug before investigating, with the exact commands.
+  - Stop: when the map is out of date (unmapped files, components with no files, invalid JSON, bad marks), block the end of the turn until the agent updates `.dev/components.json` or `.dev/bugs.json`, at most once per turn.
+- The commit list gains new commits as they are made.
+- **Done when:**
+  - In a fresh project, `npx skills add oynozan/dev-bubbles` and "set up dev bubbles" end with the mapped repo open in the browser.
+  - A new Claude Code session starts the server by itself.
+  - A casual "this doesn't work" shows striped suspects before the agent reads code.
+  - A new commit appears in the commit list without a reload.
 
 ## Testing
 
