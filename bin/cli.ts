@@ -3,25 +3,17 @@ import fs from 'node:fs'
 import type { AddressInfo } from 'node:net'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
-import { resolveBugs } from '../server/bugs.ts'
-import { buildTree, checkManifest, flattenTree, listComponents, treeIds } from '../server/components.ts'
+import { buildTree, flattenTree, listComponents } from '../server/components.ts'
 import { createEdgeIndex } from '../server/edges.ts'
 import type { UnmatchedCall } from '../server/edges.ts'
 import { startServer } from '../server/index.ts'
-import { compareStrings, createInventory, findRepoRoot, listRepoFiles } from '../server/inventory.ts'
-import type { InventoryFile } from '../server/inventory.ts'
-import { configDir, errorMessage, formatJson, readJsonFile } from '../server/json-file.ts'
+import { compareStrings, findRepoRoot } from '../server/inventory.ts'
+import { configDir, errorMessage, formatJson } from '../server/json-file.ts'
 import type { JsonFileResult } from '../server/json-file.ts'
 import { findPackageRoot } from '../server/package-root.ts'
-import { bugsFileSchema, fileId, manifestSchema, ownFilesId, UNMAPPED_ID } from '../shared/schema.ts'
+import { fileId, ownFilesId } from '../shared/schema.ts'
 import type { Edge, FileRef, Manifest, TreeNode } from '../shared/schema.ts'
-
-type RepoState = {
-    manifestResult: JsonFileResult<Manifest>
-    manifest: Manifest | undefined
-    files: InventoryFile[]
-    root: TreeNode
-}
+import { findErrors, loadRepo, unmappedPaths } from './repo.ts'
 
 const defaultPort = 4747
 const listLimit = 200
@@ -139,13 +131,6 @@ function copyTemplates(sourceDir: string, repoRoot: string, targetDir: string, e
 
 /* Summary */
 
-async function loadRepo(repoRoot: string, trackedOnly: boolean): Promise<RepoState> {
-    const manifestResult = readJsonFile(path.join(repoRoot, configDir, 'components.json'), manifestSchema)
-    const manifest = manifestResult.status === 'ok' ? manifestResult.value : undefined
-    const files = await createInventory(repoRoot, () => listRepoFiles(repoRoot, trackedOnly)).scan(manifest?.ignore ?? [])
-    return { manifestResult, manifest, files, root: buildTree(path.basename(repoRoot), files, manifest) }
-}
-
 async function summarize(repoRoot: string, trackedOnly: boolean): Promise<string> {
     const { manifestResult, manifest, files, root } = await loadRepo(repoRoot, trackedOnly)
     const { edges, unmatchedCalls } = await createEdgeIndex(repoRoot).update(files, manifest)
@@ -220,11 +205,6 @@ function describeCall(call: UnmatchedCall): string {
     return `${call.file}  ${call.method} ${call.path}`
 }
 
-function unmappedPaths(root: TreeNode): string[] {
-    const unmapped = root.children?.find((node) => node.id === UNMAPPED_ID)
-    return (unmapped?.files ?? []).map((file) => file.path)
-}
-
 function fileRefs(node: TreeNode): FileRef[] {
     return flattenTree(node).flatMap((child) => child.files ?? [])
 }
@@ -244,26 +224,10 @@ function directoryOf(nodeId: string): string {
 /* Validate */
 
 async function validate(repoRoot: string, trackedOnly: boolean): Promise<number> {
-    const { manifestResult, manifest, root } = await loadRepo(repoRoot, trackedOnly)
-    const bugsResult = readJsonFile(path.join(repoRoot, configDir, 'bugs.json'), bugsFileSchema)
-    const nodeIds = treeIds(root)
-    const errors = [
-        ...(manifestResult.status === 'invalid' ? manifestResult.errors : []),
-        ...(manifest ? checkManifest(manifest) : []),
-        ...(manifest ? findEmptyComponents(manifest, nodeIds) : []),
-        ...(bugsResult.status === 'invalid' ? bugsResult.errors : []),
-        ...(bugsResult.status === 'ok' ? resolveBugs(bugsResult.value, nodeIds).errors : []),
-        ...unmappedPaths(root).map((filePath) => `components.json: ${filePath} matches no component`),
-    ]
+    const errors = await findErrors(repoRoot, trackedOnly)
     const verdict = errors.length === 0 ? 'OK' : countOf(errors.length, 'error')
     console.log([...capList(errors), verdict].join('\n'))
     return errors.length === 0 ? 0 : 1
-}
-
-function findEmptyComponents(manifest: Manifest, nodeIds: ReadonlySet<string>): string[] {
-    return listComponents(manifest.components)
-        .filter(({ def }) => !nodeIds.has(def.id))
-        .map(({ def, jsonPath }) => `components.json: ${jsonPath}: component ${def.id} has no files`)
 }
 
 /* Main */
