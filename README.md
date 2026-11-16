@@ -54,7 +54,7 @@ node .dev/dev-bubbles/dist/bin/cli.js up --open
 
 If the clone already exists, run `git -C .dev/dev-bubbles pull` instead of the first line. Then run `/map` in Claude Code to name the components.
 
-If you prefer a global command, clone Dev Bubbles anywhere outside the project, run `npm install` and `npm link` in the clone, and use `dev-bubbles init .` and `dev-bubbles up --open` in the project. A global install straight from GitHub (`npm install -g github:oynozan/dev-bubbles`) does not work, because npm leaves out the build tools when it prepares a git package for a global install.
+If you prefer a global command, clone Dev Bubbles anywhere outside the project, run `npm install` and `npm link` in the clone, and use `dev-bubbles init .` and `dev-bubbles up --open` in the project. The hooks and the `CLAUDE.md` section then point at that clone by its absolute path. A global install straight from GitHub (`npm install -g github:oynozan/dev-bubbles`) does not work, because npm leaves out the build tools when it prepares a git package for a global install.
 
 Below, `dev-bubbles` stands for `node .dev/dev-bubbles/dist/bin/cli.js` run from the project root, or the global command.
 
@@ -107,7 +107,7 @@ dev-bubbles <command> [repo] [options]
 
 | Command | What it does |
 | --- | --- |
-| `serve` | Serve the live map in the foreground at port 4747, or a free port when 4747 is busy and no `--port` was given. Writes `.dev/server.json` while it runs |
+| `serve` | Serve the live map in the foreground at port 4747, or a free port when 4747 is busy and no `--port` was given. Writes `.dev/server.json` while it runs. This is the default command |
 | `up` | Start the map server in the background unless one already runs for this repo, and print its URL. Logs go to `.dev/server.log` |
 | `down` | Stop the background server |
 | `init` | Create `.dev/components.json` and `.dev/bugs.json`, add the gitignore entries, copy the `/map` and `/bug` commands and the skill into `.claude/`, write the Dev Bubbles section into `CLAUDE.md` and merge the hooks into `.claude/settings.json`. Safe to re-run |

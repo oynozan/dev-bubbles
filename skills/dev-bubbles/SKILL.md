@@ -11,7 +11,7 @@ In this skill, `dev-bubbles` means `node .dev/dev-bubbles/dist/bin/cli.js` run f
 
 ## Setup procedure
 
-Run this when `.dev/dev-bubbles/` is missing or the user asks to set up Dev Bubbles. It needs Node.js 22.12 or newer and git, and runs from the root of the project's git repo.
+Run this when the user asks to set up Dev Bubbles, or when `.dev/dev-bubbles/` is missing and no `dev-bubbles` command is on the PATH. It needs Node.js 22.12 or newer and git, and runs from the root of the project's git repo.
 
 1. `git clone https://github.com/oynozan/dev-bubbles.git .dev/dev-bubbles`. If the clone already exists, run `git -C .dev/dev-bubbles pull` instead.
 2. `npm install --prefix .dev/dev-bubbles`. This also builds `dist/` and takes about a minute.
@@ -190,7 +190,7 @@ Follow this whenever a message from the user reports something broken or behavin
 
 ## Map procedure
 
-1. If `.dev/dev-bubbles/` is missing, run the setup procedure instead, which comes back here. If only `.dev/components.json` is missing, run `dev-bubbles init .`.
+1. If Dev Bubbles is not installed, run the setup procedure instead, which comes back here. If only `.dev/components.json` is missing, run `dev-bubbles init .`.
 2. Run `dev-bubbles summary .`. Read the tree, the cross-directory imports and the unmatched HTTP calls.
 3. Open entry points (package.json scripts, server or app bootstrap, route registration, top-level pages) and other key files only where a folder's purpose is unclear. Do not read every file.
 4. Write `.dev/components.json` following the rules above:
