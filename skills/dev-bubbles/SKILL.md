@@ -28,7 +28,7 @@ Run this when the user asks to set up Dev Bubbles, or when `.dev/dev-bubbles/` i
 - `dev-bubbles up [repo] [--open]`: start the map server in the background unless one already runs for this repo, and print its URL. `--open` also opens the browser. Logs go to `.dev/server.log`.
 - `dev-bubbles down [repo]`: stop the background server.
 - `dev-bubbles init [repo]`: create `.dev/components.json` and `.dev/bugs.json` if missing, add the gitignore entries from the table below, copy the `/map` and `/bug` commands to `.claude/commands/` and this skill to `.claude/skills/dev-bubbles/`, write a Dev Bubbles section into `CLAUDE.md` between `<!-- dev-bubbles:start -->` and `<!-- dev-bubbles:end -->`, and merge the three hooks into `.claude/settings.json`. Safe to re-run.
-- `dev-bubbles summary [repo]`: compact text made for you. Directory tree with file counts and LOC, top cross-directory import counts, current components with their file counts, components that have both own files and sub-components, unmapped files, and unmatched HTTP calls.
+- `dev-bubbles summary [repo]`: compact text made for you. Directory tree with file counts and LOC, top cross-directory import counts, current components with their file counts, components that have both own files and sub-components, unmapped files, unmatched HTTP calls, and the code the detector cannot read.
 - `dev-bubbles validate [repo]`: check both JSON files and print each error with its JSON path, plus components that match no file and files that match no component. Prints OK and exits 0 when clean, exits 1 otherwise.
 - `dev-bubbles bug open <title...>`: add an open bug and print its new id, such as `b3`.
 - `dev-bubbles bug mark <id> <target> <suspected|confirmed> [reason...]`: mark a component id from `components.json` or a repo file path. Marking a target again changes its state and reason. A target that is neither is refused, with the closest component ids.
@@ -101,8 +101,9 @@ The hooks that `init` installs in `.claude/settings.json`:
         { "id": "ui", "label": "Design System", "include": ["packages/ui/**"] },
         { "id": "tooling", "label": "Build Tooling", "include": ["package.json", "pnpm-workspace.yaml", "turbo.json"] }
     ],
-    "httpEdges": [
-        { "from": "storefront.checkout", "to": "billing.api", "note": "calls BILLING_API_URL from env" }
+    "edges": [
+        { "from": "storefront.checkout", "to": "billing.api", "kind": "http", "note": "calls BILLING_API_URL from env" },
+        { "from": "billing.invoices", "to": "notifications", "kind": "import", "note": "from notifications import send_invoice" }
     ]
 }
 ```
@@ -116,7 +117,11 @@ The hooks that `init` installs in `.claude/settings.json`:
 - `children` nest components, at most 4 levels in total.
 - Files that match no component land in an `Unmapped` bubble. Aim for none.
 - `ignore` (optional): globs for files to drop from the map entirely, such as lockfiles, generated code, committed build output and snapshots. Never ignore real source.
-- `httpEdges` (optional): manual dashed edges between component ids, for HTTP calls the detector cannot see. The detector already links `fetch` and `axios` calls whose URL is a literal path starting with `/` to Express, Fastify, Hono and Next.js routes. Add an edge only for a call that `summary` lists as unmatched (base URL from env, another service, a generated client) when you can tell which component handles it. `note` says what the call is.
+- `edges` (optional): the lines you draw between component ids, for connections the detector cannot see. `kind` is `import` (solid line) or `http` (dashed line), and `note` says what the connection is.
+    - The detector only reads JavaScript and TypeScript. It resolves their imports, and links `fetch` and `axios` calls whose URL is a literal path starting with `/` to Express, Fastify, Hono and Next.js routes. Never add an edge it already draws.
+    - Everything else is yours to draw: imports between components in any other language (`summary` lists that code under "Code the detector cannot read"), and calls that cross components through an API client, a base URL from env, IPC (such as Tauri `invoke` to a Rust command), a queue or an event bus. Unmatched HTTP calls from `summary` belong here too when you can tell which component handles them.
+    - One edge per pair of components and direction is enough. Draw it between the most specific components on both ends.
+- `httpEdges` (optional): the older form of `edges` with `kind` left out, always drawn as HTTP calls. Still read, but write `edges`.
 
 ### How the map shows components
 
@@ -191,7 +196,7 @@ Follow this whenever a message from the user reports something broken or behavin
 ## Map procedure
 
 1. If Dev Bubbles is not installed, run the setup procedure instead, which comes back here. If only `.dev/components.json` is missing, run `dev-bubbles init .`.
-2. Run `dev-bubbles summary .`. Read the tree, the cross-directory imports and the unmatched HTTP calls.
+2. Run `dev-bubbles summary .`. Read the tree, the cross-directory imports, the unmatched HTTP calls and the code the detector cannot read.
 3. Open entry points (package.json scripts, server or app bootstrap, route registration, top-level pages) and other key files only where a folder's purpose is unclear. Do not read every file.
 4. Write `.dev/components.json` following the rules above:
    - Group by what the code does in the product (Auth, Billing API, Web App), not by file type.
@@ -199,7 +204,7 @@ Follow this whenever a message from the user reports something broken or behavin
    - Labels say what the code does, never a raw folder or file name.
    - Dot-path ids under the parent.
    - Cover every source file, root config files included. Put lockfiles and generated noise in `ignore`.
-   - Add `httpEdges` for the unmatched HTTP calls you can attribute.
+   - Add `edges` for every connection between components that the map cannot detect. For code the detector cannot read, check its imports (`use`, `import`, `mod`, `require`, `#include`) and calls between components, so that the map has the same lines a JavaScript project would get.
 5. Run `dev-bubbles validate .`. Fix every error, cover every unmapped file, and fix or drop components that match no file. Repeat until it prints OK.
 6. Run `dev-bubbles summary .` again. For every component it lists with both sub-components and own files, move those files into a child, then validate again.
 7. Tell the user the top-level components in a few lines. An open map renames its bubbles live and keeps their positions.
@@ -213,3 +218,5 @@ When `components.json` already has components:
 ## Keep the map current
 
 Whenever you add, move or delete files or features, update `.dev/components.json` in the same turn: a new component for a new feature, or wider globs on an existing one. Then run `dev-bubbles validate .`. The Stop hook blocks the end of your turn while files are unmapped. Never rename ids.
+
+Update the lines in the same turn as the bubbles. Whenever code you write adds, moves or removes a connection the detector cannot see (see `edges` above), add, re-point or delete the matching edge. A new component with no lines to the rest of the map usually means a missing edge. Also re-point edges when you split a component, so that they end on its new children.

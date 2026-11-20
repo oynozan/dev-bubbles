@@ -53,7 +53,7 @@ flowchart LR
 ```
 
 1. **The agent names the parts.** It reads a summary of the repo (directories, lines of code, imports between them) and writes `.dev/components.json`: components such as Google Connector or Billing API, each matched to files by globs. Dev Bubbles itself never calls an LLM and needs no API key.
-2. **The server reads the code.** For JavaScript and TypeScript it resolves imports, including tsconfig paths, and matches `fetch` and `axios` calls to Express, Fastify, Hono and Next.js routes. Files in other languages still show up in their components, without edges.
+2. **The server reads the code.** For JavaScript and TypeScript it resolves imports, including tsconfig paths, and matches `fetch` and `axios` calls to Express, Fastify, Hono and Next.js routes. For other languages, and for connections no parser can see such as API clients, IPC or events, the agent draws the lines itself in the `edges` list of `components.json` and keeps them current as the code grows.
 3. **Bugs are a file too.** When you describe a problem, the agent runs `bug open`, `bug mark` and `bug fix`, which write `.dev/bugs.json`. Suspects are striped red, the confirmed cause is solid red, and fixing the bug clears its marks.
 4. **Every change is pushed to the map.** The server watches your files, the git index and HEAD, and the `.dev/` files. On a change it rebuilds the map and pushes it to the browser, about 0.4 s after the save or commit. Nothing polls.
 5. **Hooks keep the agent on track.** `init` adds three Claude Code hooks:
@@ -146,11 +146,14 @@ A components file looks like this:
             ]
         },
         { "id": "billing", "label": "Billing API", "include": ["src/api/billing/**"] }
+    ],
+    "edges": [
+        { "from": "billing", "to": "auth.session", "kind": "import", "note": "use crate::auth::session" }
     ]
 }
 ```
 
-A file belongs to the deepest component that matches it, and at equal depth to the first one listed. A broken file never stops the server: the map keeps the last valid version and shows the error until it is fixed. The [skill](skills/dev-bubbles/SKILL.md) documents both formats in full, and this repo maps itself in [.dev/components.json](.dev/components.json).
+A file belongs to the deepest component that matches it, and at equal depth to the first one listed. `edges` holds the lines the server cannot detect, solid for `import` and dashed for `http`. A broken file never stops the server: the map keeps the last valid version and shows the error until it is fixed. The [skill](skills/dev-bubbles/SKILL.md) documents both formats in full, and this repo maps itself in [.dev/components.json](.dev/components.json).
 
 ## Development
 

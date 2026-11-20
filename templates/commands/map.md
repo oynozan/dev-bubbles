@@ -11,7 +11,7 @@ Map this repository into components for Dev Bubbles. Load the dev-bubbles skill 
    - name what the code does for the product (Google Connector, Billing API), never a raw folder or file name
    - make each leaf small enough to mean something, a feature or module of roughly a handful to a few dozen files, at most 4 levels
    - avoid a component with both own files and sub-components, since its own files show as an extra leaf with its name, and give those files a child of their own
-   - dot-path ids under the parent, every source file covered, `ignore` for lockfiles and generated noise, `httpEdges` for the unmatched HTTP calls from the summary
+   - dot-path ids under the parent, every source file covered, `ignore` for lockfiles and generated noise, `edges` for every connection the map cannot detect: imports in the code the summary says it cannot read, and the unmatched HTTP calls
    - if components already exist, keep every existing id and only add, regroup or relabel
 4. Run `{{cli}} validate` and fix what it reports until it prints OK.
 5. Run `{{cli}} summary` again and move the own files of every component it lists with both sub-components and own files into a child, then validate again.
