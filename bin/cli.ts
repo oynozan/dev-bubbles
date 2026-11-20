@@ -21,6 +21,8 @@ import { findErrors, loadRepo, unmappedPaths } from './repo.ts'
 const defaultPort = 4747
 const listLimit = 200
 const importPairLimit = 30
+// ponytail: a fixed list of languages the edge detector does not read, a type missing here just goes unlisted
+const otherCodeFile = /\.(?:py|rb|go|rs|java|kt|kts|scala|swift|m|mm|c|h|cc|cpp|hpp|cs|fs|php|dart|ex|exs|erl|hs|lua|jl|zig|clj|elm|vue|svelte|astro|html)$/i
 const commands = new Set(['serve', 'up', 'down', 'init', 'summary', 'validate', 'bug', 'hook'])
 
 const usage = `Usage: dev-bubbles [command] [repo] [options]
@@ -115,6 +117,10 @@ async function summarize(repoRoot: string, trackedOnly: boolean): Promise<string
         ),
         section('Unmapped files:', manifest?.components.length ? capList(unmappedPaths(root)) : ['all files, components.json has no valid components yet']),
         section('Unmatched HTTP calls:', capList(unmatchedCalls.map(describeCall))),
+        section(
+            'Code the detector cannot read, so the map has no lines for its imports and calls until you add them to "edges":',
+            capList(describeUnreadCode(files)),
+        ),
     ].join('\n\n')
 }
 
@@ -139,7 +145,7 @@ function describeDirectories(node: TreeNode, depth = 0): string[] {
 function describeImportPairs(edges: Edge[]): string[] {
     const counts = new Map<string, number>()
     for (const edge of edges) {
-        if (edge.kind !== 'import') continue
+        if (edge.kind !== 'import' || !edge.from.startsWith(fileId(''))) continue
         const from = directoryOf(edge.from)
         const to = directoryOf(edge.to)
         const pair = `${from} -> ${to}`
@@ -169,6 +175,21 @@ function describeOwnFiles(root: TreeNode): string[] {
         if (node.kind !== 'component' || !ownFiles) return []
         return [`${node.id}, ${node.label}: ${countOf(ownFiles.length, 'file')}`, ...ownFiles.map((file) => `  ${file.path}`)]
     })
+}
+
+function describeUnreadCode(files: { path: string }[]): string[] {
+    const dirs = new Map<string, { count: number, extensions: Set<string> }>()
+    for (const file of files) {
+        if (!otherCodeFile.test(file.path)) continue
+        const dir = path.posix.dirname(file.path)
+        const entry = dirs.get(dir) ?? { count: 0, extensions: new Set<string>() }
+        entry.count++
+        entry.extensions.add(path.posix.extname(file.path))
+        dirs.set(dir, entry)
+    }
+    return [...dirs]
+        .sort(([dirA], [dirB]) => compareStrings(dirA, dirB))
+        .map(([dir, { count, extensions }]) => `${dir}/  ${countOf(count, 'file')} (${[...extensions].join(', ')})`)
 }
 
 function describeCall(call: UnmatchedCall): string {

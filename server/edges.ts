@@ -153,8 +153,9 @@ function findHttpEdges(cache: Map<string, CachedFile>): EdgeResult {
 }
 
 function manualEdges(manifest: Manifest | undefined): Edge[] {
-    return (manifest?.httpEdges ?? []).map(({ from, to, note }): Edge => (
-        note === undefined ? { from, to, kind: 'http' } : { from, to, kind: 'http', label: note }
+    const httpEdges = (manifest?.httpEdges ?? []).map((edge) => ({ ...edge, kind: 'http' as const }))
+    return [...(manifest?.edges ?? []), ...httpEdges].map(({ from, to, kind, note }): Edge => (
+        note === undefined ? { from, to, kind } : { from, to, kind, label: note }
     ))
 }
 

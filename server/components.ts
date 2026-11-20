@@ -46,11 +46,13 @@ export function checkManifest(manifest: Manifest): string[] {
         if (ids.has(def.id)) errors.push(`components.json: ${jsonPath}.id: duplicate component id ${def.id}`)
         ids.add(def.id)
     }
-    manifest.httpEdges?.forEach((edge, index) => {
-        for (const end of ['from', 'to'] as const) {
-            if (!ids.has(edge[end])) errors.push(`components.json: httpEdges[${index}].${end}: unknown component id ${edge[end]}`)
-        }
-    })
+    for (const field of ['edges', 'httpEdges'] as const) {
+        manifest[field]?.forEach((edge, index) => {
+            for (const end of ['from', 'to'] as const) {
+                if (!ids.has(edge[end])) errors.push(`components.json: ${field}[${index}].${end}: unknown component id ${edge[end]}`)
+            }
+        })
+    }
     return errors
 }
 

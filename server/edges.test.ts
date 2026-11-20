@@ -51,6 +51,7 @@ describe('createEdgeIndex on the sample app', () => {
         result = await createEdgeIndex(repo).update(listFiles(repo), {
             version: 1,
             components: [],
+            edges: [{ from: 'native', to: 'auth', kind: 'import', note: 'use crate::auth' }],
             httpEdges: [
                 { from: 'web', to: 'api.billing', note: 'calls BILLING_URL from env' },
                 { from: 'web', to: 'auth' },
@@ -127,6 +128,7 @@ describe('createEdgeIndex on the sample app', () => {
             label: 'calls BILLING_URL from env',
         })
         expect(result.edges).toContainEqual({ from: 'web', to: 'auth', kind: 'http' })
+        expect(result.edges).toContainEqual({ from: 'native', to: 'auth', kind: 'import', label: 'use crate::auth' })
     })
 })
 

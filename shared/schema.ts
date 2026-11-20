@@ -38,10 +38,18 @@ export const httpEdgeSchema = z.strictObject({
     note: z.string().optional(),
 })
 
+export const edgeDefSchema = z.strictObject({
+    from: z.string().min(1),
+    to: z.string().min(1),
+    kind: z.enum(['import', 'http']),
+    note: z.string().optional(),
+})
+
 export const manifestSchema = z.strictObject({
     version: z.literal(1),
     ignore: z.array(z.string().min(1)).optional(),
     components: z.array(componentSchema),
+    edges: z.array(edgeDefSchema).optional(),
     httpEdges: z.array(httpEdgeSchema).optional(),
 })
 

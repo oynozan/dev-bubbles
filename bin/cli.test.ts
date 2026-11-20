@@ -172,13 +172,18 @@ describe('dev-bubbles CLI', { timeout: 30_000 }, () => {
     })
 
     it('validate reports schema, manifest, coverage and bug errors and exits 1', () => {
-        writeConfig('components.json', { ...authAndBilling, httpEdges: [{ from: 'web', to: 'auth' }] })
+        writeConfig('components.json', {
+            ...authAndBilling,
+            edges: [{ from: 'auth', to: 'native', kind: 'import' }],
+            httpEdges: [{ from: 'web', to: 'auth' }],
+        })
         writeConfig('bugs.json', {
             version: 1,
             bugs: [{ id: 'b1', title: 'Login', status: 'open', marks: [{ component: 'auth.x', state: 'suspected' }] }],
         })
         const { status, stdout } = runCli('validate', '--repo', repo)
         expect(status).toBe(1)
+        expect(stdout).toContain('components.json: edges[0].to: unknown component id native')
         expect(stdout).toContain('components.json: httpEdges[0].from: unknown component id web')
         expect(stdout).toContain('components.json: components[1]: component billing has no files')
         expect(stdout).toContain('components.json: src/lib/url.ts matches no component')
@@ -204,6 +209,17 @@ describe('dev-bubbles CLI', { timeout: 30_000 }, () => {
         expect(stdout).toContain('  src/lib/url.ts\n')
         expect(stdout).toContain('web/src/App.tsx  POST /api/analytics')
         expect(stdout).toMatch(/Components with both sub-components and own files[^\n]*\n {2}\(none\)\n/)
+    })
+
+    it('summary lists code the edge detector cannot read, by directory', () => {
+        const freshRepo = makeRepo()
+        fs.mkdirSync(path.join(freshRepo, 'native', 'src'), { recursive: true })
+        fs.writeFileSync(path.join(freshRepo, 'native', 'src', 'main.rs'), 'mod window;\n')
+        fs.writeFileSync(path.join(freshRepo, 'native', 'src', 'window.rs'), 'pub fn open() {}\n')
+        fs.writeFileSync(path.join(freshRepo, 'native', 'src', 'index.html'), '<script src="app.js"></script>\n')
+        const { status, stdout } = runCli('summary', freshRepo)
+        expect(status).toBe(0)
+        expect(stdout).toContain('until you add them to "edges":\n  native/src/  3 files (.html, .rs)\n')
     })
 
     it('summary lists the own files of components that also have sub-components', () => {
