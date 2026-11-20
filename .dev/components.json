@@ -75,8 +75,8 @@
             ]
         }
     ],
-    "httpEdges": [
-        { "from": "web.shell", "to": "server.http", "note": "GET /api/events streams snapshots" },
-        { "from": "web.canvas", "to": "server.http", "note": "POST /api/layout saves dragged pins" }
+    "edges": [
+        { "from": "web.shell", "to": "server.http", "kind": "http", "note": "GET /api/events streams snapshots" },
+        { "from": "web.canvas", "to": "server.http", "kind": "http", "note": "POST /api/layout saves dragged pins" }
     ]
 }

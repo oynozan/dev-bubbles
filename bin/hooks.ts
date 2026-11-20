@@ -50,7 +50,7 @@ async function describeSession(repoRoot: string): Promise<string> {
     return [
         `Dev Bubbles: the user is watching a live bubble map of this repo at ${url}.`,
         `Record every bug report at once, however casual ("this part doesn't work"), before investigating: \`${cli} bug open "<symptom>"\` prints an id, then \`${cli} bug mark <id> <component> suspected "<why>"\` for each likely component. Narrow the marks as you go, mark the root cause confirmed and run \`bug fix <id>\` after the fix. \`bug list\` shows the open bugs.`,
-        `When you add files or features, add them to ${configDir}/components.json in the same turn and run \`${cli} validate\`.`,
+        `When you add files, features or connections, update ${configDir}/components.json in the same turn and run \`${cli} validate\`. Lines beyond JS/TS imports and literal fetch paths exist only in its "edges".`,
         ...(isUnmapped ? ['This repo is not mapped yet. Offer to map it with the map procedure of the dev-bubbles skill, or /map.'] : []),
     ].join('\n')
 }
