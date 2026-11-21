@@ -13,8 +13,9 @@ describe('watchRepo', () => {
     let watcher: RepoWatcher | undefined
     let calls: number
 
-    async function startWatching(indexPath = gitIndexPath): Promise<void> {
-        watcher = await watchRepo(dir, [indexPath, path.join(path.dirname(indexPath), 'logs', 'HEAD')], () => calls++)
+    async function startWatching(indexPath = gitIndexPath, ignoredPaths: string[] = []): Promise<void> {
+        const gitFiles = [indexPath, path.join(path.dirname(indexPath), 'logs', 'HEAD')]
+        watcher = await watchRepo(dir, gitFiles, () => calls++, ignoredPaths)
     }
 
     async function expectOneCall(): Promise<void> {
@@ -65,6 +66,17 @@ describe('watchRepo', () => {
         fs.writeFileSync(path.join(dir, '.git', 'objects', 'blob'), 'blob\n')
         await delay(600)
         expect(calls).toBe(0)
+    })
+
+    it('ignores changes inside the gitignored paths it is given', async () => {
+        fs.mkdirSync(path.join(dir, 'tools', 'venv', 'lib'), { recursive: true })
+        await startWatching(gitIndexPath, ['tools/venv/', 'debug.log'])
+        fs.writeFileSync(path.join(dir, 'tools', 'venv', 'lib', 'site.py'), 'x = 1\n')
+        fs.writeFileSync(path.join(dir, 'debug.log'), 'line\n')
+        await delay(1000)
+        expect(calls).toBe(0)
+        fs.writeFileSync(path.join(dir, 'src', 'a.ts'), 'export {}\n')
+        await expectOneCall()
     })
 
     it('ignores the config folder except the map files', async () => {

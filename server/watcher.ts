@@ -15,12 +15,18 @@ const debounceMs = 300
 const maxWaitMs = 600
 
 // Resolves once the initial crawl is done, so changes made right after are not missed
-export function watchRepo(repoRoot: string, gitFiles: string[], onChange: () => void): Promise<RepoWatcher> {
+export function watchRepo(
+    repoRoot: string,
+    gitFiles: string[],
+    onChange: () => void,
+    ignoredPaths: readonly string[] = [],
+): Promise<RepoWatcher> {
     let timer: NodeJS.Timeout | undefined
     let burstStart: number | undefined
+    const gitIgnored = new Set(ignoredPaths.map((ignoredPath) => ignoredPath.replace(/\/$/, '')))
     const watcher = watch([repoRoot, ...new Set(gitFiles.map((gitFile) => path.dirname(gitFile)))], {
         ignoreInitial: true,
-        ignored: (filePath) => isIgnoredPath(repoRoot, gitFiles, path.resolve(filePath)),
+        ignored: (filePath) => isIgnoredPath(repoRoot, gitFiles, gitIgnored, path.resolve(filePath)),
     })
     watcher.on('all', () => {
         burstStart ??= Date.now()
@@ -44,9 +50,11 @@ export function watchRepo(repoRoot: string, gitFiles: string[], onChange: () => 
 }
 
 // git add and git rm change the file set through the git index alone, and an amend or reset can move HEAD without it
-function isIgnoredPath(repoRoot: string, gitFiles: string[], filePath: string): boolean {
+function isIgnoredPath(repoRoot: string, gitFiles: string[], gitIgnored: ReadonlySet<string>, filePath: string): boolean {
     if (gitFiles.some((gitFile) => filePath === gitFile || filePath === path.dirname(gitFile))) return false
     const segments = path.relative(repoRoot, filePath).split(path.sep)
     if (segments[0] === configDir && segments.length > 1) return segments.length > 2 || !watchedConfigFiles.has(segments[1])
-    return segments[0] === '..' || segments.some((segment) => ignoredSegments.has(segment))
+    if (segments[0] === '..' || segments.some((segment) => ignoredSegments.has(segment))) return true
+    // On macOS each watched file holds a descriptor, and past about ten thousand spawning git fails with EBADF
+    return gitIgnored.size > 0 && segments.some((_, index) => gitIgnored.has(segments.slice(0, index + 1).join('/')))
 }
