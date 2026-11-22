@@ -4,7 +4,7 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http'
 import path from 'node:path'
 import { pinRequestSchema } from '../shared/schema.ts'
 import type { Snapshot } from '../shared/schema.ts'
-import { findGitPath, findRepoRoot } from './inventory.ts'
+import { findGitPath, findRepoRoot, listIgnoredPaths } from './inventory.ts'
 import { errorMessage } from './json-file.ts'
 import { findPackageRoot } from './package-root.ts'
 import { createSnapshotSource } from './snapshot.ts'
@@ -62,7 +62,8 @@ export async function startServer({ repo, port, trackedOnly }: ServerOptions): P
     await listen(server, port)
     const watcher = refresh().then(async () => {
         if (!server.listening) return undefined
-        const repoWatcher = await watchRepo(repoRoot, gitFiles, () => void refresh())
+        const ignoredPaths = await listIgnoredPaths(repoRoot)
+        const repoWatcher = await watchRepo(repoRoot, gitFiles, () => void refresh(), ignoredPaths)
         // Changes made before the watcher was ready sent no event
         if (server.listening) void refresh()
         return repoWatcher

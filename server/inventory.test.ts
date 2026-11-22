@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { makeFixture } from '../scripts/make-fixture.ts'
-import { createInventory, findRepoRoot, listRepoFiles } from './inventory.ts'
+import { createInventory, findRepoRoot, listIgnoredPaths, listRepoFiles } from './inventory.ts'
 import type { InventoryFile } from './inventory.ts'
 
 function writeFile(root: string, filePath: string, content: string | Buffer): void {
@@ -103,6 +103,23 @@ describe('inventory from a given file list', () => {
             expect(files.map((file) => [file.path, file.loc])).toEqual([['src/a.ts', 2]])
         } finally {
             fs.rmSync(dir, { recursive: true, force: true })
+        }
+    })
+})
+
+describe('listIgnoredPaths', () => {
+    it('lists gitignored files, and each gitignored folder as one entry', async () => {
+        const fixtureDir = makeFixture()
+        try {
+            writeFile(fixtureDir, 'debug.log', 'ignored by git\n')
+            writeFile(fixtureDir, 'dist/assets/app.js', 'ignored by git\n')
+            writeFile(fixtureDir, 'src/draft.ts', 'export {}\n')
+            const ignored = await listIgnoredPaths(fixtureDir)
+            expect(ignored).toEqual(expect.arrayContaining(['debug.log', 'dist/']))
+            expect(ignored.filter((entry) => entry.startsWith('dist/') && entry !== 'dist/')).toEqual([])
+            expect(ignored).not.toContain('src/draft.ts')
+        } finally {
+            fs.rmSync(fixtureDir, { recursive: true, force: true })
         }
     })
 })

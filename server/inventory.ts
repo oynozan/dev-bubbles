@@ -90,6 +90,13 @@ export async function listRepoFiles(repoRoot: string, trackedOnly: boolean): Pro
     return [...new Set(stdout.split('\0').filter(Boolean))]
 }
 
+// A folder git ignores whole comes back as one entry ending in a slash
+export async function listIgnoredPaths(repoRoot: string): Promise<string[]> {
+    const args = ['ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z']
+    const { stdout } = await execFileAsync('git', args, { cwd: repoRoot, maxBuffer: gitMaxBuffer })
+    return stdout.split('\0').filter(Boolean)
+}
+
 function isBinary(content: Buffer): boolean {
     return content.subarray(0, binaryProbeSize).includes(0)
 }
