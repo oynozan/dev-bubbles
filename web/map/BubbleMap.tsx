@@ -63,6 +63,7 @@ type MapUi = {
 type GroupSimulation = Simulation<BubbleState, undefined>
 type BubbleDragEvent = D3DragEvent<SVGGElement, unknown, SubjectPosition>
 
+const pinStrength = 0.1
 const reheatAlpha = 0.15
 const dragAlphaTarget = 0.3
 const alphaDecay = 0.04
@@ -355,11 +356,9 @@ class MapController implements BubbleActions, EdgeActions, LabelActions {
 
     unpin = (id: string): void => {
         const bubble = this.bubbles.get(id)
-        if (bubble?.fx == null) return
-        bubble.fx = null
-        bubble.fy = null
+        if (!bubble?.pin) return
         bubble.pin = undefined
-        this.simulations.get(bubble.parentId)?.alpha(reheatAlpha).restart()
+        this.repin(bubble.parentId)?.alpha(reheatAlpha).restart()
         savePin({ id: bubble.pinId, pin: null })
     }
 
@@ -425,12 +424,14 @@ class MapController implements BubbleActions, EdgeActions, LabelActions {
         const isRoot = group.id === ROOT_ID
         // The initial view centres the root, so the top-level centre pull doubles as the viewport centre force
         const centreStrength = isRoot ? 0.03 : 0.06
+        const pullOf = (bubble: BubbleState) => (bubble.pin ? pinStrength : centreStrength)
         const simulation = forceSimulation(this.membersOf(group))
             .alpha(0)
             .alphaDecay(alphaDecay)
             .alphaMin(alphaMin)
-            .force('centreX', forceX<BubbleState>(0).strength(centreStrength))
-            .force('centreY', forceY<BubbleState>(0).strength(centreStrength))
+            // A pinned bubble drifts back to its pin and the rest to the centre, so collisions move both
+            .force('pullX', forceX<BubbleState>((bubble) => bubble.pin?.[0] ?? 0).strength(pullOf))
+            .force('pullY', forceY<BubbleState>((bubble) => bubble.pin?.[1] ?? 0).strength(pullOf))
             .force('collide', forceCollide<BubbleState>((bubble) => bubble.r + padding))
             // The repo draws no circle, so top-level bubbles float free on the background
             .force('contain', isRoot ? null : forceContain(() => this.bubbles.get(group.id)?.r ?? group.r))
@@ -442,6 +443,12 @@ class MapController implements BubbleActions, EdgeActions, LabelActions {
         // Top-level bubbles that settled away from where the last fit saw them pull the view along
         if (isRoot) simulation.on('end', () => this.updateRootZoom(true))
         return simulation
+    }
+
+    // The pull forces read pins only when they initialize, so a pin change hands them the members again
+    private repin(groupId: string): GroupSimulation | undefined {
+        const simulation = this.simulations.get(groupId)
+        return simulation?.nodes(simulation.nodes())
     }
 
     private membersOf(group: LayoutNode): BubbleState[] {
@@ -543,6 +550,9 @@ class MapController implements BubbleActions, EdgeActions, LabelActions {
                 this.simulations.get(bubble.parentId)?.alphaTarget(0)
                 if (bubble.fx == null || bubble.fy == null) return
                 bubble.pin = [bubble.fx, bubble.fy]
+                bubble.fx = null
+                bubble.fy = null
+                this.repin(bubble.parentId)
                 savePin({ id: bubble.pinId, pin: bubble.pin })
             })
         select(element).call(dragBehavior)

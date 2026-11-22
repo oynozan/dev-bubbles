@@ -243,9 +243,9 @@ type Snapshot = {
 - The repo draws no circle, so top-level bubbles float free and the view fits the smallest circle around them.
 - Semantic zoom: a component shows its children only when its on-screen radius is above ~60 px. Otherwise it's drawn closed with its label.
 - Drag with `d3-drag` per node:
-  - Dragging pins the node (`fx`/`fy`) and saves the pin with `POST /api/layout` → `layout.json`.
+  - Dragging fixes the node (`fx`/`fy`) under the pointer. On drop it floats again, and its spot is saved as a pin with `POST /api/layout` → `layout.json`. A pin pulls its node back instead of fixing it, so collisions still push pinned nodes.
   - Double-click unpins.
-  - The containment force clamps pins that end up outside a resized parent.
+  - The containment force keeps nodes, dragged ones included, inside a resized parent.
 - Labels:
   - Only components (the `Unmapped` leaf included) draw a label: curved `CircleText` when open, centered text when closed. There is no root bubble, the top level shows the components.
   - Files are not bubbles. Fallback directories draw no label, their path shows in the hover tooltip.

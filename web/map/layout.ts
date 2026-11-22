@@ -40,7 +40,7 @@ export type BubbleState = SimulationNodeDatum & {
     isGroup: boolean
     x: number
     y: number
-    // The pin as saved, since containment may clamp fx and fy inside a shrunken parent
+    // The spot the bubble drifts back to, never fx and fy, so collisions still push a pinned bubble
     pin?: Pin
 }
 
@@ -258,8 +258,6 @@ const newBubble = (
 const applyPin = (bubble: BubbleState, pin: Pin | undefined): boolean => {
     if (pin?.[0] === bubble.pin?.[0] && pin?.[1] === bubble.pin?.[1]) return false
     bubble.pin = pin
-    bubble.fx = pin?.[0] ?? null
-    bubble.fy = pin?.[1] ?? null
     if (pin) {
         bubble.x = pin[0]
         bubble.y = pin[1]
@@ -307,6 +305,7 @@ export const forceContain = (parentRadius: () => number): Force<BubbleState, und
 }
 
 const containBubble = (bubble: BubbleState, parentR: number): void => {
+    // Only a bubble under the pointer is fixed
     if (bubble.fx != null && bubble.fy != null) {
         [bubble.fx, bubble.fy] = containPoint(bubble, parentR, [bubble.fx, bubble.fy])
         return

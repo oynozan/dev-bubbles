@@ -220,31 +220,33 @@ describe('syncBubbles', () => {
         expect(changedGroups.has(dirId('web'))).toBe(false)
     })
 
-    it('lets pins override positions and releases nodes whose pin is gone', () => {
+    it('moves pinned nodes to their pins without fixing them, so collisions still push them', () => {
         const tree = packTree(sampleTree())
         const bubbles = syncedBubbles(tree)
 
         const changedGroups = syncBubbles(bubbles, tree, { [dirId('web')]: [10, 20] })
-        expect(bubbles.get(dirId('web'))).toMatchObject({ x: 10, y: 20, fx: 10, fy: 20 })
+        const web = bubbles.get(dirId('web'))!
+        expect(web).toMatchObject({ x: 10, y: 20, pin: [10, 20] })
+        expect(web.fx ?? null).toBeNull()
+        expect(web.fy ?? null).toBeNull()
         expect(changedGroups).toEqual(new Set([ROOT_ID]))
 
         syncBubbles(bubbles, tree, {})
-        expect(bubbles.get(dirId('web'))).toMatchObject({ x: 10, y: 20, fx: null, fy: null })
+        expect(web).toMatchObject({ x: 10, y: 20, pin: undefined })
     })
 
-    it('leaves a clamped pin alone until the saved pin changes', () => {
+    it('leaves a pinned node that was pushed off its pin alone until the saved pin changes', () => {
         const tree = packTree(sampleTree())
         const bubbles = syncedBubbles(tree)
         const pins: Record<string, Pin> = { [dirId('web')]: [500, 0] }
         syncBubbles(bubbles, tree, pins)
         const web = bubbles.get(dirId('web'))!
         web.x = 17
-        web.fx = 17
 
         expect(syncBubbles(bubbles, tree, pins)).toEqual(new Set())
-        expect(web).toMatchObject({ x: 17, fx: 17 })
+        expect(web).toMatchObject({ x: 17 })
         syncBubbles(bubbles, tree, { [dirId('web')]: [20, 0] })
-        expect(web).toMatchObject({ x: 20, fx: 20 })
+        expect(web).toMatchObject({ x: 20 })
     })
 
     it('keeps the spot of a directory chain that expands or collapses', () => {
@@ -264,20 +266,20 @@ describe('syncBubbles', () => {
         const bubbles = new Map<string, BubbleState>()
 
         syncBubbles(bubbles, libTree('core'), pins)
-        expect(bubbles.get(dirId('src/lib/core'))).toMatchObject({ pinId: dirId('src/lib'), fx: 12, fy: -8 })
+        expect(bubbles.get(dirId('src/lib/core'))).toMatchObject({ pinId: dirId('src/lib'), x: 12, y: -8, pin: [12, -8] })
 
         syncBubbles(bubbles, libTree('core', 'extra'), pins)
-        expect(bubbles.get(dirId('src/lib'))).toMatchObject({ parentId: dirId('src'), fx: 12, fy: -8 })
+        expect(bubbles.get(dirId('src/lib'))).toMatchObject({ parentId: dirId('src'), pin: [12, -8] })
         const inner = bubbles.get(dirId('src/lib/core'))
         expect(inner).toMatchObject({ pinId: dirId('src/lib/core'), parentId: dirId('src/lib') })
-        expect(inner?.fx ?? null).toBeNull()
+        expect(inner?.pin).toBeUndefined()
     })
 
     it('applies pins to nodes that are new on load', () => {
         const bubbles = new Map<string, BubbleState>()
         syncBubbles(bubbles, packTree(sampleTree()), { [dirId('web')]: [-3, 4] })
 
-        expect(bubbles.get(dirId('web'))).toMatchObject({ x: -3, y: 4, fx: -3, fy: 4 })
+        expect(bubbles.get(dirId('web'))).toMatchObject({ x: -3, y: 4, pin: [-3, 4] })
     })
 })
 
@@ -307,7 +309,7 @@ describe('forceContain', () => {
         expect(bubble.vy).toBe(2)
     })
 
-    it('clamps a pin that ends up outside a shrunken parent', () => {
+    it('clamps a dragged node that the pointer takes outside its parent', () => {
         const bubble = { ...bubbleAt(0, 80, 10), fx: 0, fy: 80 }
         const force = forceContain(() => 50)
         force.initialize?.([bubble], Math.random)
